@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#F6F5F1">
+<title>Nota Spese · LTA</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<style>
+  :root{
+    --paper:#F6F5F1; --surface:#FFFFFF; --ink:#1C2B33; --muted:#75807A;
+    --line:#E3E1D9; --accent:#0E6E5C; --accent-ink:#FFFFFF; --danger:#B3402A;
+    --warn-bg:#FBF3E2; --warn-ink:#7A5A18; --ok:#0E6E5C;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --radius:14px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; background:var(--paper); color:var(--ink);
+    font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  body{padding-bottom:60px;}
+  header{padding:20px 18px 10px;}
+  header h1{margin:0; font-size:22px; font-weight:700; letter-spacing:-.02em;}
+  header p{margin:2px 0 0; color:var(--muted); font-size:13px;}
+  main{padding:0 14px; max-width:560px; margin:0 auto;}
+  section.card{background:var(--surface); border:1px solid var(--line);
+    border-radius:var(--radius); padding:16px; margin-bottom:14px;}
+  h2{font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--muted); margin:0 0 12px;}
+  label{display:block; font-size:13px; font-weight:600; margin:12px 0 5px;}
+  label:first-of-type{margin-top:0;}
+  input[type=text],input[type=date],input[type=number],select{
+    width:100%; padding:11px 12px; font-size:16px; color:var(--ink);
+    border:1px solid var(--line); border-radius:10px; background:var(--paper);
+    appearance:none; -webkit-appearance:none;}
+  input:focus,select:focus{outline:2px solid var(--accent); outline-offset:0; border-color:var(--accent);}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  button{font:inherit; font-weight:600; border:none; border-radius:10px;
+    padding:13px 16px; cursor:pointer; touch-action:manipulation;}
+  button:focus-visible{outline:2px solid var(--ink); outline-offset:2px;}
+  .btn-primary{background:var(--accent); color:var(--accent-ink); width:100%; font-size:16px;}
+  .btn-secondary{background:var(--paper); color:var(--ink); border:1px solid var(--line);}
+  .btn-danger{background:transparent; color:var(--danger); border:1px solid var(--danger);}
+  .btn-ghost{background:transparent; color:var(--accent); padding:8px 10px;}
+  .btn-row{display:flex; gap:8px; margin-top:10px;}
+  .btn-row button{flex:1;}
+
+  /* Receipt chip — perforated-edge look */
+  .receipt-zone{margin-top:14px;}
+  .receipt-chip{border:1.5px dashed var(--line); border-radius:10px; padding:12px;
+    display:flex; align-items:center; gap:10px; background:var(--paper);}
+  .receipt-chip.ok{border-color:var(--accent); background:#F0F7F4;}
+  .receipt-chip .ric-info{flex:1; min-width:0;}
+  .receipt-chip .ric-name{font-family:var(--mono); font-size:12px; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap;}
+  .receipt-chip .ric-status{font-size:12px; color:var(--muted);}
+  .receipt-chip.ok .ric-status{color:var(--ok); font-weight:600;}
+
+  /* Expense list, ledger style */
+  .month-head{font-size:12px; font-weight:700; text-transform:uppercase;
+    letter-spacing:.08em; color:var(--muted); margin:18px 4px 8px;}
+  .exp{background:var(--surface); border:1px solid var(--line); border-radius:12px;
+    padding:12px 14px; margin-bottom:8px; display:flex; align-items:center; gap:10px;}
+  .exp .exp-main{flex:1; min-width:0;}
+  .exp .exp-vendor{font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .exp .exp-meta{font-size:12px; color:var(--muted); margin-top:1px;}
+  .exp .exp-amt{font-family:var(--mono); font-size:15px; font-weight:600; text-align:right;}
+  .exp .exp-flag{font-size:11px; text-align:right; margin-top:2px;}
+  .flag-none{color:var(--muted);}
+  .flag-pending{color:var(--warn-ink); font-weight:600;}
+  .flag-exported{color:var(--ok);}
+  .empty{color:var(--muted); text-align:center; padding:24px 10px; font-size:14px;}
+
+  .banner{background:var(--warn-bg); color:var(--warn-ink); border-radius:12px;
+    padding:12px 14px; font-size:13px; margin-bottom:14px; display:none;}
+  .msg{border-radius:10px; padding:11px 13px; font-size:14px; margin-top:10px; display:none;}
+  .msg.err{background:#FBECE7; color:var(--danger); display:block;}
+  .msg.ok{background:#EDF6F2; color:var(--ok); display:block;}
+
+  /* Crop overlay */
+  #cropView{position:fixed; inset:0; background:#10161A; z-index:50; display:none;
+    flex-direction:column;}
+  #cropView.open{display:flex;}
+  #cropView .crop-top{color:#fff; padding:14px 16px 6px; font-size:14px;}
+  #cropCanvasWrap{flex:1; display:flex; align-items:center; justify-content:center;
+    overflow:hidden; padding:6px;}
+  #cropCanvas{max-width:100%; max-height:100%; touch-action:none;}
+  #cropView .crop-actions{display:flex; gap:8px; padding:12px 14px calc(14px + env(safe-area-inset-bottom));}
+  #cropView .crop-actions button{flex:1;}
+  #cropStatus{color:#9FB0A9; font-size:12px; padding:0 16px 4px;}
+
+  /* Modal */
+  .modal-back{position:fixed; inset:0; background:rgba(16,22,26,.55); z-index:60;
+    display:none; align-items:flex-end; justify-content:center;}
+  .modal-back.open{display:flex;}
+  .modal{background:var(--surface); width:100%; max-width:560px;
+    border-radius:16px 16px 0 0; padding:18px 16px calc(18px + env(safe-area-inset-bottom));}
+  .modal h3{margin:0 0 6px; font-size:17px;}
+  .modal p{margin:0 0 14px; font-size:14px; color:var(--muted); white-space:pre-line;}
+  .modal .btn-col{display:flex; flex-direction:column; gap:8px;}
+
+  .spin{display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,.4);
+    border-top-color:#fff; border-radius:50%; animation:sp .8s linear infinite; vertical-align:-2px;}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion: reduce){ .spin{animation:none;} }
+  footer{color:var(--muted); font-size:11px; text-align:center; padding:18px 14px;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Nota Spese</h1>
+  <p>Spese, ricevute e export — LTA US Advisors</p>
+</header>
+
+<main>
+  <div class="banner" id="storageBanner"></div>
+
+  <!-- ══════════ NUOVA SPESA ══════════ -->
+  <section class="card">
+    <h2>Nuova spesa</h2>
+
+    <div class="row2">
+      <div>
+        <label for="fDate">Data</label>
+        <input type="date" id="fDate">
+      </div>
+      <div>
+        <label for="fAmount">Importo</label>
+        <input type="number" id="fAmount" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+      </div>
+    </div>
+
+    <label for="fVendor">Fornitore / Luogo</label>
+    <input type="text" id="fVendor" placeholder="Es. Uber, Starbucks, Hotel…" autocomplete="off">
+
+    <div class="row2">
+      <div>
+        <label for="fCategory">Categoria</label>
+        <select id="fCategory">
+          <option value="TRAVEL MEALS">Travel Meals</option>
+          <option value="LODGING">Lodging</option>
+          <option value="AIR">Air</option>
+          <option value="TAXI">Taxi</option>
+          <option value="OTHER">Other</option>
+        </select>
+      </div>
+      <div>
+        <label for="fCurrency">Valuta</label>
+        <select id="fCurrency">
+          <option>USD</option><option>EUR</option>
+        </select>
+      </div>
+    </div>
+
+    <label for="fPurpose">Business purpose</label>
+    <input type="text" id="fPurpose" placeholder="Es. Client meeting" autocomplete="off">
+
+    <label for="fAttendees">Partecipanti</label>
+    <input type="text" id="fAttendees" value="Eldi Trimi" autocomplete="off">
+
+    <label for="fClient">Cliente</label>
+    <input type="text" id="fClient" list="clientList" placeholder="Es. SERIOPLAST" autocomplete="off">
+    <datalist id="clientList">
+      <option value="SERIOPLAST"><option value="LTA">
+    </datalist>
+
+    <!-- Ricevuta -->
+    <div class="receipt-zone">
+      <div class="receipt-chip" id="ricChip">
+        <div class="ric-info">
+          <div class="ric-status" id="ricStatus">Nessuna ricevuta</div>
+          <div class="ric-name" id="ricName"></div>
+        </div>
+        <button class="btn-ghost" id="btnPhoto" type="button">📷 Fotografa</button>
+      </div>
+      <div class="btn-row" id="ricActions" style="display:none">
+        <button class="btn-secondary" id="btnRicView" type="button">Visualizza</button>
+        <button class="btn-secondary" id="btnRicRetake" type="button">Rifai foto</button>
+        <button class="btn-danger" id="btnRicDelete" type="button">Elimina</button>
+      </div>
+    </div>
+
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
+
+    <div style="margin-top:16px">
+      <button class="btn-primary" id="btnSave" type="button">Salva spesa</button>
+    </div>
+    <div class="msg" id="formMsg"></div>
+  </section>
+
+  <!-- ══════════ EXPORT ══════════ -->
+  <section class="card">
+    <h2>Export</h2>
+    <button class="btn-primary" id="btnExportZip" type="button">Scarica Excel + Ricevute (ZIP)</button>
+    <div class="btn-row">
+      <button class="btn-secondary" id="btnExportXlsx" type="button">Solo Excel</button>
+      <button class="btn-danger" id="btnDeleteAll" type="button">Cancella tutto</button>
+    </div>
+    <div class="msg" id="exportMsg"></div>
+  </section>
+
+  <!-- ══════════ SPESE ══════════ -->
+  <section>
+    <div id="expList"></div>
+  </section>
+</main>
+
+<footer>I dati restano su questo dispositivo finché non li esporti. Esporta a fine mese.</footer>
+
+<!-- ══════════ CROP VIEW ══════════ -->
+<div id="cropView">
+  <div class="crop-top">Trascina gli angoli sui bordi della ricevuta</div>
+  <div id="cropStatus"></div>
+  <div id="cropCanvasWrap"><canvas id="cropCanvas"></canvas></div>
+  <div class="crop-actions">
+    <button class="btn-secondary" id="btnCropCancel" type="button">Annulla</button>
+    <button class="btn-secondary" id="btnCropRetake" type="button">Rifai foto</button>
+    <button class="btn-primary" id="btnCropOk" type="button">Conferma</button>
+  </div>
+</div>
+
+<!-- ══════════ MODAL ══════════ -->
+<div class="modal-back" id="modalBack">
+  <div class="modal">
+    <h3 id="modalTitle"></h3>
+    <p id="modalText"></p>
+    <div class="btn-col" id="modalBtns"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ═══════════════════════════════════════════════════════════
+   NOTA SPESE — single-file app, no build step.
+   Spese: localStorage (piccoli JSON).
+   Ricevute PDF: IndexedDB (blob), keyed su expenseId.
+   Export: SheetJS (xlsx) + JSZip. PDF: jsPDF.
+   Auto-crop: OpenCV.js caricato lazy; fallback ritaglio manuale.
+   ═══════════════════════════════════════════════════════════ */
+
+const LS_KEY = "ns_expenses_v2";
+const MAX_WORK_SIDE = 2400;   // downscale prima di QUALSIASI canvas (limite iOS)
+const MAX_PDF_SIDE  = 2000;   // lato max immagine dentro il PDF
+const JPEG_Q = 0.72;
+const MESI = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio",
+              "Agosto","Settembre","Ottobre","Novembre","Dicembre"];
+
+const $ = id => document.getElementById(id);
+
+/* ─────────── Store spese (localStorage) ─────────── */
+function loadExpenses(){
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; }
+  catch(e){ return []; }
+}
+function saveExpenses(list){
+  localStorage.setItem(LS_KEY, JSON.stringify(list));
+}
+let expenses = loadExpenses();
+
+/* ─────────── Store ricevute (IndexedDB) ─────────── */
+let dbPromise = null;
+function db(){
+  if(!dbPromise){
+    dbPromise = new Promise((res, rej) => {
+      const req = indexedDB.open("notaspese-db", 1);
+      req.onupgradeneeded = () => {
+        req.result.createObjectStore("receipts", { keyPath: "expenseId" });
+      };
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    });
+  }
+  return dbPromise;
+}
+async function idbPut(rec){
+  const d = await db();
+  return new Promise((res, rej) => {
+    const tx = d.transaction("receipts","readwrite");
+    tx.objectStore("receipts").put(rec);
+    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+  });
+}
+async function idbGet(id){
+  const d = await db();
+  return new Promise((res, rej) => {
+    const rq = d.transaction("receipts").objectStore("receipts").get(id);
+    rq.onsuccess = () => res(rq.result || null);
+    rq.onerror = () => rej(rq.error);
+  });
+}
+async function idbDelete(id){
+  const d = await db();
+  return new Promise((res, rej) => {
+    const tx = d.transaction("receipts","readwrite");
+    tx.objectStore("receipts").delete(id);
+    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+  });
+}
+async function idbAll(){
+  const d = await db();
+  return new Promise((res, rej) => {
+    const rq = d.transaction("receipts").objectStore("receipts").getAll();
+    rq.onsuccess = () => res(rq.result || []);
+    rq.onerror = () => rej(rq.error);
+  });
+}
+
+/* ─────────── Utility ─────────── */
+function sanitizeName(s){
+  return (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/[^A-Za-z0-9 _-]/g,"").trim().replace(/\s+/g,"_").slice(0,40) || "Ricevuta";
+}
+function fmtAmt(n, cur){
+  const v = Number(n).toFixed(2);
+  return (cur==="EUR" ? "€ " : "$ ") + v;
+}
+function receiptFilename(exp, existingNames){
+  const base = `${exp.date}_${Number(exp.amount).toFixed(2)}_${sanitizeName(exp.vendor)}`;
+  let name = base + ".pdf", i = 1;
+  while(existingNames.has(name)){
+    name = `${base}_${String(i).padStart(3,"0")}.pdf`; i++;
+  }
+  return name;
+}
+function showMsg(el, text, kind){
+  el.className = "msg " + kind;
+  el.textContent = text;
+  if(kind === "ok") setTimeout(() => { el.className = "msg"; }, 4000);
+}
+/* Download/share robusto (lezione appresa: mai revocare l'URL subito) */
+async function deliverFile(blob, filename, mime){
+  const file = new File([blob], filename, { type: mime });
+  if(navigator.share){
+    try { await navigator.share({ files:[file], title:filename }); return true; }
+    catch(e){
+      if(e && e.name === "AbortError") return false; // annullato dall'utente
+      /* share non disponibile per file: fallback download */
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return true;
+}
+
+/* ─────────── Modal ─────────── */
+function modal(title, text, buttons){
+  return new Promise(res => {
+    $("modalTitle").textContent = title;
+    $("modalText").textContent = text;
+    const wrap = $("modalBtns"); wrap.innerHTML = "";
+    buttons.forEach(b => {
+      const btn = document.createElement("button");
+      btn.className = b.cls || "btn-secondary";
+      btn.textContent = b.label;
+      btn.onclick = () => { $("modalBack").classList.remove("open"); res(b.value); };
+      wrap.appendChild(btn);
+    });
+    $("modalBack").classList.add("open");
+  });
+}
+$("modalBack").addEventListener("click", e => {
+  if(e.target === $("modalBack")) $("modalBack").classList.remove("open");
+});
+
+/* ─────────── OpenCV lazy load ─────────── */
+let cvState = "idle"; // idle | loading | ready | failed
+let cvWaiters = [];
+function loadOpenCV(){
+  if(cvState === "ready") return Promise.resolve(true);
+  if(cvState === "failed") return Promise.resolve(false);
+  return new Promise(res => {
+    cvWaiters.push(res);
+    if(cvState === "loading") return;
+    cvState = "loading";
+    const s = document.createElement("script");
+    s.src = "https://docs.opencv.org/4.9.0/opencv.js";
+    const fail = () => { cvState = "failed"; cvWaiters.forEach(f => f(false)); cvWaiters = []; };
+    const timer = setTimeout(fail, 20000);
+    s.onload = () => {
+      const check = () => {
+        if(window.cv && cv.Mat){ clearTimeout(timer); cvState = "ready";
+          cvWaiters.forEach(f => f(true)); cvWaiters = []; }
+        else if(window.cv && cv.onRuntimeInitialized !== undefined){
+          cv.onRuntimeInitialized = () => { clearTimeout(timer); cvState = "ready";
+            cvWaiters.forEach(f => f(true)); cvWaiters = []; };
+        } else setTimeout(check, 100);
+      };
+      check();
+    };
+    s.onerror = () => { clearTimeout(timer); fail(); };
+    document.head.appendChild(s);
+  });
+}
+
+/* ─────────── Pipeline foto ─────────── */
+let workCanvas = null;        // immagine downscalata
+let corners = null;           // [{x,y}×4] in coordinate workCanvas
+let cropDisplayScale = 1;
+let pendingReceipt = null;    // { blob, url } in attesa del salvataggio spesa
+let retakeTargetId = null;    // se sto sostituendo la ricevuta di una spesa esistente
+
+$("btnPhoto").addEventListener("click", () => { retakeTargetId = null; startCamera(); });
+function startCamera(){
+  loadOpenCV(); // parte in background mentre l'utente scatta
+  $("cameraInput").value = "";
+  $("cameraInput").click();
+}
+$("cameraInput").addEventListener("change", async e => {
+  const f = e.target.files && e.target.files[0];
+  if(!f) return;
+  try { await openCrop(f); }
+  catch(err){ showMsg($("formMsg"), "Errore lettura foto: " + err.message, "err"); }
+});
+
+async function openCrop(file){
+  // 1. Decode + downscale PRIMA di ogni elaborazione (vincolo memoria iOS)
+  const url = URL.createObjectURL(file);
+  const img = await new Promise((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = () => rej(new Error("immagine non leggibile"));
+    i.src = url;
+  });
+  const scale = Math.min(1, MAX_WORK_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+  workCanvas = document.createElement("canvas");
+  workCanvas.width  = Math.round(img.naturalWidth  * scale);
+  workCanvas.height = Math.round(img.naturalHeight * scale);
+  workCanvas.getContext("2d").drawImage(img, 0, 0, workCanvas.width, workCanvas.height);
+  URL.revokeObjectURL(url);
+
+  // 2. Angoli di default, poi tentativo auto-detect
+  const w = workCanvas.width, h = workCanvas.height, inset = 0.06;
+  corners = [
+    {x:w*inset, y:h*inset}, {x:w*(1-inset), y:h*inset},
+    {x:w*(1-inset), y:h*(1-inset)}, {x:w*inset, y:h*(1-inset)}
+  ];
+  $("cropView").classList.add("open");
+  drawCrop();
+
+  $("cropStatus").textContent = "Rilevamento bordi…";
+  const hasCv = await loadOpenCV();
+  if(hasCv){
+    const det = detectQuad(workCanvas);
+    if(det){ corners = det; $("cropStatus").textContent = "Bordi rilevati — correggi se serve"; }
+    else $("cropStatus").textContent = "Bordi non rilevati — posiziona gli angoli a mano";
+  } else {
+    $("cropStatus").textContent = "Ritaglio manuale — posiziona gli angoli";
+  }
+  drawCrop();
+}
+
+function detectQuad(canvas){
+  try{
+    const src = cv.imread(canvas);
+    const gray = new cv.Mat(), edges = new cv.Mat();
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, gray, new cv.Size(5,5), 0);
+    cv.Canny(gray, edges, 50, 150);
+    const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5,5));
+    cv.dilate(edges, edges, kernel);
+    const contours = new cv.MatVector(), hier = new cv.Mat();
+    cv.findContours(edges, contours, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    let best = null, bestArea = canvas.width * canvas.height * 0.15; // min 15% dell'area
+    for(let i = 0; i < contours.size(); i++){
+      const c = contours.get(i);
+      const peri = cv.arcLength(c, true);
+      const approx = new cv.Mat();
+      cv.approxPolyDP(c, approx, 0.02 * peri, true);
+      if(approx.rows === 4){
+        const area = Math.abs(cv.contourArea(approx));
+        if(area > bestArea){
+          bestArea = area;
+          best = [];
+          for(let j = 0; j < 4; j++)
+            best.push({ x: approx.data32S[j*2], y: approx.data32S[j*2+1] });
+        }
+      }
+      approx.delete(); c.delete();
+    }
+    src.delete(); gray.delete(); edges.delete(); kernel.delete();
+    contours.delete(); hier.delete();
+    return best ? orderCorners(best) : null;
+  } catch(e){ return null; }
+}
+function orderCorners(pts){
+  const cx = pts.reduce((s,p)=>s+p.x,0)/4, cy = pts.reduce((s,p)=>s+p.y,0)/4;
+  const tl = pts.find(p=>p.x<cx && p.y<cy), tr = pts.find(p=>p.x>=cx && p.y<cy);
+  const br = pts.find(p=>p.x>=cx && p.y>=cy), bl = pts.find(p=>p.x<cx && p.y>=cy);
+  return (tl&&tr&&br&&bl) ? [tl,tr,br,bl] : null;
+}
+
+/* ── Crop UI: canvas + 4 handle trascinabili ── */
+const cropCanvas = $("cropCanvas");
+function drawCrop(){
+  const wrap = $("cropCanvasWrap");
+  const availW = wrap.clientWidth - 12, availH = wrap.clientHeight - 12;
+  cropDisplayScale = Math.min(availW / workCanvas.width, availH / workCanvas.height, 1);
+  cropCanvas.width  = Math.round(workCanvas.width  * cropDisplayScale);
+  cropCanvas.height = Math.round(workCanvas.height * cropDisplayScale);
+  const ctx = cropCanvas.getContext("2d");
+  ctx.drawImage(workCanvas, 0, 0, cropCanvas.width, cropCanvas.height);
+  // velo fuori dal poligono
+  ctx.save();
+  ctx.fillStyle = "rgba(16,22,26,.55)";
+  ctx.beginPath();
+  ctx.rect(0, 0, cropCanvas.width, cropCanvas.height);
+  const p = corners.map(c => ({ x:c.x*cropDisplayScale, y:c.y*cropDisplayScale }));
+  ctx.moveTo(p[0].x, p[0].y);
+  for(let i = 3; i >= 1; i--) ctx.lineTo(p[i].x, p[i].y);
+  ctx.closePath();
+  ctx.fill("evenodd");
+  ctx.restore();
+  // bordo + handle
+  ctx.strokeStyle = "#2FBF9B"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(p[0].x, p[0].y);
+  p.slice(1).forEach(q => ctx.lineTo(q.x, q.y));
+  ctx.closePath(); ctx.stroke();
+  p.forEach(q => {
+    ctx.beginPath(); ctx.arc(q.x, q.y, 13, 0, Math.PI*2);
+    ctx.fillStyle = "rgba(47,191,155,.28)"; ctx.fill();
+    ctx.beginPath(); ctx.arc(q.x, q.y, 6, 0, Math.PI*2);
+    ctx.fillStyle = "#2FBF9B"; ctx.fill();
+  });
+}
+let dragIdx = -1;
+function cropPos(ev){
+  const r = cropCanvas.getBoundingClientRect();
+  return { x:(ev.clientX - r.left) / cropDisplayScale,
+           y:(ev.clientY - r.top)  / cropDisplayScale };
+}
+cropCanvas.addEventListener("pointerdown", ev => {
+  const pos = cropPos(ev);
+  let best = -1, bestD = 45 / cropDisplayScale; // raggio cattura generoso
+  corners.forEach((c,i) => {
+    const d = Math.hypot(c.x-pos.x, c.y-pos.y);
+    if(d < bestD){ bestD = d; best = i; }
+  });
+  dragIdx = best;
+  if(dragIdx >= 0) cropCanvas.setPointerCapture(ev.pointerId);
+});
+cropCanvas.addEventListener("pointermove", ev => {
+  if(dragIdx < 0) return;
+  const pos = cropPos(ev);
+  corners[dragIdx] = {
+    x: Math.max(0, Math.min(workCanvas.width,  pos.x)),
+    y: Math.max(0, Math.min(workCanvas.height, pos.y))
+  };
+  drawCrop();
+});
+cropCanvas.addEventListener("pointerup", () => { dragIdx = -1; });
+window.addEventListener("resize", () => {
+  if($("cropView").classList.contains("open")) drawCrop();
+});
+
+$("btnCropCancel").addEventListener("click", closeCrop);
+$("btnCropRetake").addEventListener("click", () => { closeCrop(); startCamera(); });
+function closeCrop(){
+  $("cropView").classList.remove("open");
+  workCanvas = null; corners = null;
+}
+
+/* ── Conferma: warp/crop → PDF ── */
+$("btnCropOk").addEventListener("click", async () => {
+  const btn = $("btnCropOk");
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Elaboro…';
+  try{
+    const outCanvas = extractDocument(workCanvas, corners);
+    const blob = await canvasToPdfBlob(outCanvas);
+    if(pendingReceipt) URL.revokeObjectURL(pendingReceipt.url);
+    pendingReceipt = { blob, url: URL.createObjectURL(blob) };
+    $("cropView").classList.remove("open");
+    workCanvas = null;
+
+    if(retakeTargetId){
+      // sostituzione ricevuta di una spesa già salvata
+      const exp = expenses.find(x => x.id === retakeTargetId);
+      if(exp){
+        const names = new Set((await idbAll())
+          .filter(r => r.expenseId !== exp.id).map(r => r.filename));
+        await idbPut({ expenseId: exp.id, filename: receiptFilename(exp, names),
+                       blob: pendingReceipt.blob, createdAt: Date.now(), exportedAt: null });
+        exp.hasReceipt = true; saveExpenses(expenses);
+        URL.revokeObjectURL(pendingReceipt.url); pendingReceipt = null;
+        retakeTargetId = null;
+        renderList(); updateBanner();
+      }
+    } else {
+      updateReceiptChip();
+    }
+  } catch(err){
+    showMsg($("formMsg"), "Errore elaborazione: " + err.message, "err");
+    $("cropView").classList.remove("open");
+  } finally {
+    btn.disabled = false; btn.textContent = "Conferma";
+  }
+});
+
+function extractDocument(canvas, pts){
+  const wTop = Math.hypot(pts[1].x-pts[0].x, pts[1].y-pts[0].y);
+  const wBot = Math.hypot(pts[2].x-pts[3].x, pts[2].y-pts[3].y);
+  const hL   = Math.hypot(pts[3].x-pts[0].x, pts[3].y-pts[0].y);
+  const hR   = Math.hypot(pts[2].x-pts[1].x, pts[2].y-pts[1].y);
+  let outW = Math.round(Math.max(wTop, wBot));
+  let outH = Math.round(Math.max(hL, hR));
+  const s = Math.min(1, MAX_PDF_SIDE / Math.max(outW, outH));
+  outW = Math.max(80, Math.round(outW*s));
+  outH = Math.max(80, Math.round(outH*s));
+
+  if(cvState === "ready"){
+    try{
+      const src = cv.imread(canvas);
+      const dst = new cv.Mat();
+      const from = cv.matFromArray(4,1,cv.CV_32FC2,
+        [pts[0].x,pts[0].y, pts[1].x,pts[1].y, pts[2].x,pts[2].y, pts[3].x,pts[3].y]);
+      const to = cv.matFromArray(4,1,cv.CV_32FC2, [0,0, outW,0, outW,outH, 0,outH]);
+      const M = cv.getPerspectiveTransform(from, to);
+      cv.warpPerspective(src, dst, M, new cv.Size(outW, outH),
+        cv.INTER_LINEAR, cv.BORDER_REPLICATE);
+      const out = document.createElement("canvas");
+      out.width = outW; out.height = outH;
+      cv.imshow(out, dst);
+      src.delete(); dst.delete(); from.delete(); to.delete(); M.delete();
+      return enhance(out);
+    } catch(e){ /* fallback sotto */ }
+  }
+  // Fallback senza OpenCV: ritaglio del bounding box (niente correzione prospettica)
+  const minX = Math.min(...pts.map(p=>p.x)), maxX = Math.max(...pts.map(p=>p.x));
+  const minY = Math.min(...pts.map(p=>p.y)), maxY = Math.max(...pts.map(p=>p.y));
+  const out = document.createElement("canvas");
+  const bw = maxX-minX, bh = maxY-minY;
+  const s2 = Math.min(1, MAX_PDF_SIDE / Math.max(bw, bh));
+  out.width = Math.max(80, Math.round(bw*s2));
+  out.height = Math.max(80, Math.round(bh*s2));
+  out.getContext("2d").drawImage(canvas, minX, minY, bw, bh, 0, 0, out.width, out.height);
+  return enhance(out);
+}
+function enhance(canvas){
+  // leggero boost di leggibilità, mai aggressivo
+  const out = document.createElement("canvas");
+  out.width = canvas.width; out.height = canvas.height;
+  const ctx = out.getContext("2d");
+  try { ctx.filter = "contrast(1.08) brightness(1.03) saturate(0.85)"; } catch(e){}
+  ctx.drawImage(canvas, 0, 0);
+  return out;
+}
+async function canvasToPdfBlob(canvas){
+  const dataUrl = canvas.toDataURL("image/jpeg", JPEG_Q);
+  const { jsPDF } = window.jspdf;
+  // pagina PDF con le proporzioni della ricevuta, in pt (1 px ≈ 0.5 pt per compattezza)
+  const wPt = canvas.width * 0.5, hPt = canvas.height * 0.5;
+  const pdf = new jsPDF({ unit:"pt",
+    format:[wPt, hPt], orientation: wPt > hPt ? "landscape" : "portrait" });
+  pdf.addImage(dataUrl, "JPEG", 0, 0, wPt, hPt);
+  return pdf.output("blob");
+}
+
+/* ─────────── Chip ricevuta nel form ─────────── */
+function updateReceiptChip(){
+  const chip = $("ricChip"), actions = $("ricActions");
+  if(pendingReceipt){
+    chip.classList.add("ok");
+    $("ricStatus").textContent = "Ricevuta acquisita ✓";
+    $("ricName").textContent = "PDF pronto — verrà salvato con la spesa";
+    $("btnPhoto").style.display = "none";
+    actions.style.display = "flex";
+  } else {
+    chip.classList.remove("ok");
+    $("ricStatus").textContent = "Nessuna ricevuta";
+    $("ricName").textContent = "";
+    $("btnPhoto").style.display = "";
+    actions.style.display = "none";
+  }
+}
+$("btnRicView").addEventListener("click", () => {
+  if(pendingReceipt) window.open(pendingReceipt.url, "_blank");
+});
+$("btnRicRetake").addEventListener("click", () => { retakeTargetId = null; startCamera(); });
+$("btnRicDelete").addEventListener("click", () => {
+  if(pendingReceipt){ URL.revokeObjectURL(pendingReceipt.url); pendingReceipt = null; }
+  updateReceiptChip();
+});
+
+/* ─────────── Salva spesa ─────────── */
+$("btnSave").addEventListener("click", async () => {
+  const exp = {
+    id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()),
+    date: $("fDate").value,
+    amount: parseFloat($("fAmount").value),
+    vendor: $("fVendor").value.trim(),
+    category: $("fCategory").value,
+    currency: $("fCurrency").value,
+    purpose: $("fPurpose").value.trim(),
+    attendees: $("fAttendees").value.trim(),
+    client: $("fClient").value.trim(),
+    createdAt: Date.now(),
+    hasReceipt: !!pendingReceipt
+  };
+  if(!exp.date){ showMsg($("formMsg"), "Inserisci la data.", "err"); return; }
+  if(!exp.amount || exp.amount <= 0){ showMsg($("formMsg"), "Inserisci un importo valido.", "err"); return; }
+  if(!exp.vendor){ showMsg($("formMsg"), "Inserisci il fornitore.", "err"); return; }
+
+  try{
+    if(pendingReceipt){
+      const names = new Set((await idbAll()).map(r => r.filename));
+      await idbPut({ expenseId: exp.id, filename: receiptFilename(exp, names),
+                     blob: pendingReceipt.blob, createdAt: Date.now(), exportedAt: null });
+    }
+    expenses.push(exp);
+    saveExpenses(expenses);
+    if(pendingReceipt){ URL.revokeObjectURL(pendingReceipt.url); pendingReceipt = null; }
+    // reset campi variabili, mantieni data/valuta/partecipanti/cliente
+    $("fAmount").value = ""; $("fVendor").value = ""; $("fPurpose").value = "";
+    updateReceiptChip();
+    showMsg($("formMsg"), "Spesa salvata ✓", "ok");
+    renderList(); updateBanner();
+  } catch(err){
+    showMsg($("formMsg"), "Errore salvataggio: " + err.message, "err");
+  }
+});
+
+/* ─────────── Lista spese ─────────── */
+async function renderList(){
+  const wrap = $("expList");
+  wrap.innerHTML = "";
+  if(expenses.length === 0){
+    wrap.innerHTML = '<div class="empty">Nessuna spesa registrata.\nInserisci la prima qui sopra.</div>';
+    return;
+  }
+  const receipts = await idbAll();
+  const rMap = new Map(receipts.map(r => [r.expenseId, r]));
+  const sorted = [...expenses].sort((a,b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+  let lastMonth = "";
+  sorted.forEach(exp => {
+    const mk = exp.date.slice(0,7);
+    if(mk !== lastMonth){
+      lastMonth = mk;
+      const [y,m] = mk.split("-");
+      const h = document.createElement("div");
+      h.className = "month-head";
+      h.textContent = `${MESI[parseInt(m,10)-1]} ${y}`;
+      wrap.appendChild(h);
+    }
+    const rec = rMap.get(exp.id);
+    const div = document.createElement("div");
+    div.className = "exp";
+    let flag = '<span class="flag-none">— nessuna ricevuta</span>';
+    if(rec) flag = rec.exportedAt
+      ? '<span class="flag-exported">📎 esportata ✓</span>'
+      : '<span class="flag-pending">📎 da esportare</span>';
+    div.innerHTML = `
+      <div class="exp-main">
+        <div class="exp-vendor"></div>
+        <div class="exp-meta"></div>
+      </div>
+      <div>
+        <div class="exp-amt"></div>
+        <div class="exp-flag">${flag}</div>
+      </div>`;
+    div.querySelector(".exp-vendor").textContent = exp.vendor;
+    div.querySelector(".exp-meta").textContent =
+      `${exp.date} · ${exp.category}` + (exp.client ? ` · ${exp.client}` : "");
+    div.querySelector(".exp-amt").textContent = fmtAmt(exp.amount, exp.currency);
+    div.addEventListener("click", () => expenseActions(exp, rec));
+    wrap.appendChild(div);
+  });
+}
+
+async function expenseActions(exp, rec){
+  const btns = [];
+  if(rec){
+    btns.push({ label:"Visualizza ricevuta", value:"view", cls:"btn-secondary" });
+    btns.push({ label:"Sostituisci ricevuta", value:"replace", cls:"btn-secondary" });
+    btns.push({ label:"Elimina solo la ricevuta", value:"delRic", cls:"btn-danger" });
+  } else {
+    btns.push({ label:"Aggiungi ricevuta", value:"addRic", cls:"btn-secondary" });
+  }
+  btns.push({ label:"Elimina spesa", value:"delExp", cls:"btn-danger" });
+  btns.push({ label:"Chiudi", value:null, cls:"btn-secondary" });
+
+  const info = `${exp.date} · ${fmtAmt(exp.amount, exp.currency)}` +
+    (rec ? `\n${rec.filename}${rec.exportedAt ? " · esportata ✓" : " · NON ancora esportata"}` : "");
+  const act = await modal(exp.vendor, info, btns);
+
+  if(act === "view"){
+    await deliverFile(rec.blob, rec.filename, "application/pdf");
+  }
+  if(act === "replace" || act === "addRic"){
+    retakeTargetId = exp.id;
+    startCamera();
+  }
+  if(act === "delRic"){
+    if(!rec.exportedAt){
+      const ok = await modal("Ricevuta non esportata",
+        "Questa ricevuta non è mai stata esportata. Se la elimini, va persa.",
+        [{label:"Elimina comunque", value:true, cls:"btn-danger"},
+         {label:"Annulla", value:false, cls:"btn-secondary"}]);
+      if(!ok) return;
+    }
+    await idbDelete(exp.id);
+    exp.hasReceipt = false; saveExpenses(expenses);
+    renderList(); updateBanner();
+  }
+  if(act === "delExp"){
+    let warn = "La spesa verrà eliminata.";
+    if(rec && !rec.exportedAt)
+      warn = "Questa spesa ha una ricevuta NON ancora esportata.\nEliminandola perdi anche il PDF.";
+    const ok = await modal("Eliminare la spesa?", warn,
+      [{label:"Elimina", value:true, cls:"btn-danger"},
+       {label:"Annulla", value:false, cls:"btn-secondary"}]);
+    if(!ok) return;
+    await idbDelete(exp.id); // mai ricevute orfane
+    expenses = expenses.filter(x => x.id !== exp.id);
+    saveExpenses(expenses);
+    renderList(); updateBanner();
+  }
+}
+
+/* ─────────── Export ─────────── */
+function buildWorkbook(list){
+  const CATS = ["TRAVEL MEALS","LODGING","AIR","TAXI","OTHER"];
+  const header = ["DATE","VENDOR","BUSINESS PURPOSE","ATTENDEES","CLIENT","CURRENCY",
+                  ...CATS, "TOTAL"];
+  const rows = [header];
+  const sorted = [...list].sort((a,b) => a.date.localeCompare(b.date));
+  sorted.forEach(e => {
+    const cat = CATS.map(c => c === e.category ? Number(e.amount) : "");
+    rows.push([e.date, e.vendor, e.purpose, e.attendees, e.client, e.currency,
+               ...cat, Number(e.amount)]);
+  });
+  const totals = ["","","","","","TOTALI"];
+  CATS.forEach(c => totals.push(
+    sorted.filter(e => e.category === c).reduce((s,e) => s + Number(e.amount), 0) || ""));
+  totals.push(sorted.reduce((s,e) => s + Number(e.amount), 0));
+  rows.push(totals);
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws["!cols"] = header.map((h,i) => ({ wch: i===2 ? 28 : (i===1||i===3 ? 20 : 13) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Nota Spese");
+  return wb;
+}
+function exportLabel(){
+  const months = [...new Set(expenses.map(e => e.date.slice(0,7)))];
+  if(months.length === 1){
+    const [y,m] = months[0].split("-");
+    return `${MESI[parseInt(m,10)-1]}_${y}`;
+  }
+  return "Export_" + new Date().toISOString().slice(0,10);
+}
+
+$("btnExportXlsx").addEventListener("click", async () => {
+  if(expenses.length === 0){ showMsg($("exportMsg"), "Nessuna spesa da esportare.", "err"); return; }
+  try{
+    const wb = buildWorkbook(expenses);
+    const out = XLSX.write(wb, { bookType:"xlsx", type:"array" });
+    const blob = new Blob([out], { type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    await deliverFile(blob, `Nota_Spese_${exportLabel()}.xlsx`, blob.type);
+  } catch(err){ showMsg($("exportMsg"), "Errore export: " + err.message, "err"); }
+});
+
+$("btnExportZip").addEventListener("click", async () => {
+  if(expenses.length === 0){ showMsg($("exportMsg"), "Nessuna spesa da esportare.", "err"); return; }
+  const btn = $("btnExportZip");
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Preparo l\u2019archivio…';
+  try{
+    const label = exportLabel();
+    const zip = new JSZip();
+    const wb = buildWorkbook(expenses);
+    const xout = XLSX.write(wb, { bookType:"xlsx", type:"array" });
+    zip.file(`Nota_Spese_${label}.xlsx`, xout);
+    const receipts = await idbAll();
+    const validIds = new Set(expenses.map(e => e.id));
+    const folder = zip.folder("Ricevute");
+    let n = 0;
+    for(const r of receipts){
+      if(!validIds.has(r.expenseId)) continue;
+      folder.file(r.filename, r.blob);
+      n++;
+    }
+    const blob = await zip.generateAsync({ type:"blob",
+      compression:"DEFLATE", compressionOptions:{ level:6 } });
+    const delivered = await deliverFile(blob, `Nota_Spese_${label}.zip`, "application/zip");
+    if(delivered){
+      // segna le ricevute come esportate SOLO dopo consegna riuscita
+      const now = Date.now();
+      for(const r of receipts){
+        if(validIds.has(r.expenseId)){ r.exportedAt = now; await idbPut(r); }
+      }
+      showMsg($("exportMsg"), `Archivio pronto: Excel + ${n} ricevute.`, "ok");
+      renderList(); updateBanner();
+    }
+  } catch(err){
+    showMsg($("exportMsg"), "Errore export: " + err.message, "err");
+  } finally {
+    btn.disabled = false; btn.textContent = "Scarica Excel + Ricevute (ZIP)";
+  }
+});
+
+$("btnDeleteAll").addEventListener("click", async () => {
+  if(expenses.length === 0) return;
+  const receipts = await idbAll();
+  const validIds = new Set(expenses.map(e => e.id));
+  const unexported = receipts.filter(r => validIds.has(r.expenseId) && !r.exportedAt).length;
+  let text = `Verranno eliminate ${expenses.length} spese e tutte le ricevute.`;
+  if(unexported > 0)
+    text = `ATTENZIONE: ${unexported} ricevut${unexported===1?"a":"e"} NON ${unexported===1?"è stata":"sono state"} ancora esportat${unexported===1?"a":"e"}.\n\nSe cancelli ora, quei PDF vanno persi per sempre.\nEsporta prima lo ZIP, poi cancella.`;
+  const ok = await modal("Cancellare tutto?", text,
+    [{label: unexported > 0 ? "Ho capito, cancella comunque" : "Cancella tutto",
+      value:true, cls:"btn-danger"},
+     {label:"Annulla", value:false, cls:"btn-secondary"}]);
+  if(!ok) return;
+  if(unexported > 0){
+    const ok2 = await modal("Ultima conferma",
+      `Confermi la cancellazione definitiva di ${unexported} ricevut${unexported===1?"a":"e"} mai esportat${unexported===1?"a":"e"}?`,
+      [{label:"Sì, cancella definitivamente", value:true, cls:"btn-danger"},
+       {label:"No, torna indietro", value:false, cls:"btn-secondary"}]);
+    if(!ok2) return;
+  }
+  for(const r of receipts) await idbDelete(r.expenseId);
+  expenses = []; saveExpenses(expenses);
+  renderList(); updateBanner();
+  showMsg($("exportMsg"), "Tutti i dati sono stati cancellati.", "ok");
+});
+
+/* ─────────── Banner promemoria export ─────────── */
+async function updateBanner(){
+  const b = $("storageBanner");
+  try{
+    const receipts = await idbAll();
+    const validIds = new Set(expenses.map(e => e.id));
+    const old = receipts.filter(r => validIds.has(r.expenseId) && !r.exportedAt &&
+      Date.now() - r.createdAt > 14*24*3600*1000);
+    if(old.length > 0){
+      b.style.display = "block";
+      b.textContent = `⚠️ Hai ${old.length} ricevut${old.length===1?"a":"e"} da oltre 2 settimane mai esportat${old.length===1?"a":"e"}. Safari può cancellare i dati locali dei siti poco usati: scarica lo ZIP appena puoi.`;
+    } else b.style.display = "none";
+  } catch(e){ b.style.display = "none"; }
+}
+
+/* ─────────── Init ─────────── */
+(function init(){
+  const today = new Date();
+  $("fDate").value = today.toISOString().slice(0,10);
+  renderList(); updateBanner();
+})();
+</script>
+</body>
+</html>
