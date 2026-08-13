@@ -177,7 +177,10 @@
           <div class="ric-status" id="ricStatus">No receipt</div>
           <div class="ric-name" id="ricName"></div>
         </div>
-        <button class="btn-ghost" id="btnPhoto" type="button">📷 Take photo</button>
+        <div style="display:flex; flex-direction:column; gap:4px">
+          <button class="btn-ghost" id="btnPhoto" type="button">📷 Take photo</button>
+          <button class="btn-ghost" id="btnGallery" type="button">🖼️ Upload</button>
+        </div>
       </div>
       <div class="btn-row" id="ricActions" style="display:none">
         <button class="btn-secondary" id="btnRicView" type="button">View</button>
@@ -187,6 +190,7 @@
     </div>
 
     <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
+    <input type="file" id="galleryInput" accept="image/*" hidden>
 
     <div style="margin-top:16px">
       <button class="btn-primary" id="btnSave" type="button">Save expense</button>
@@ -519,21 +523,32 @@ let cropDisplayScale = 1;
 let pendingReceipt = null;    // { blob, url } in attesa del salvataggio spesa
 let retakeTargetId = null;    // se sto sostituendo la ricevuta di una spesa esistente
 
-$("btnPhoto").addEventListener("click", () => { retakeTargetId = null; startCamera(); });
-function startCamera(){
-  loadOpenCV(); // parte in background mentre l'utente scatta
-  getOcrWorker().catch(() => {}); // idem per il motore OCR
-  $("cameraInput").value = "";
-  $("cameraInput").click();
+let captureMode = "camera"; // camera | gallery — ricordato per il Retake
+$("btnPhoto").addEventListener("click", () => { retakeTargetId = null; startCapture("camera"); });
+$("btnGallery").addEventListener("click", () => { retakeTargetId = null; startCapture("gallery"); });
+function startCapture(mode){
+  captureMode = mode;
+  loadOpenCV(); // parte in background mentre l'utente scatta/sceglie
+  getOcrWorker().catch(() => {});
+  const inp = $(mode === "gallery" ? "galleryInput" : "cameraInput");
+  inp.value = "";
+  inp.click();
 }
+function startCamera(){ startCapture(captureMode); } // retake: riusa l'ultima sorgente
 $("cameraInput").addEventListener("change", async e => {
   const f = e.target.files && e.target.files[0];
   if(!f) return;
-  try { await openCrop(f); }
+  try { await openCrop(f, false); }
+  catch(err){ showMsg($("formMsg"), "Photo read error: " + err.message, "err"); }
+});
+$("galleryInput").addEventListener("change", async e => {
+  const f = e.target.files && e.target.files[0];
+  if(!f) return;
+  try { await openCrop(f, true); }
   catch(err){ showMsg($("formMsg"), "Photo read error: " + err.message, "err"); }
 });
 
-async function openCrop(file){
+async function openCrop(file, isScreenshot){
   // 1. Decode + downscale PRIMA di ogni elaborazione (vincolo memoria iOS)
   const url = URL.createObjectURL(file);
   const img = await new Promise((res, rej) => {
@@ -549,13 +564,27 @@ async function openCrop(file){
   workCanvas.getContext("2d").drawImage(img, 0, 0, workCanvas.width, workCanvas.height);
   URL.revokeObjectURL(url);
 
+  const w = workCanvas.width, h = workCanvas.height;
+  $("cropView").classList.add("open");
+
+  if(isScreenshot){
+    // screenshot: nessuna prospettiva da correggere — immagine intera, ritaglio opzionale
+    const inset = 0.01;
+    corners = [
+      {x:w*inset, y:h*inset}, {x:w*(1-inset), y:h*inset},
+      {x:w*(1-inset), y:h*(1-inset)}, {x:w*inset, y:h*(1-inset)}
+    ];
+    $("cropStatus").textContent = "Trim if needed — drag the corners, then Confirm";
+    drawCrop();
+    return;
+  }
+
   // 2. Angoli di default, poi tentativo auto-detect
-  const w = workCanvas.width, h = workCanvas.height, inset = 0.06;
+  const inset = 0.06;
   corners = [
     {x:w*inset, y:h*inset}, {x:w*(1-inset), y:h*inset},
     {x:w*(1-inset), y:h*(1-inset)}, {x:w*inset, y:h*(1-inset)}
   ];
-  $("cropView").classList.add("open");
   drawCrop();
 
   $("cropStatus").textContent = "Detecting edges…";
@@ -839,12 +868,14 @@ function updateReceiptChip(){
     $("ricStatus").textContent = "Receipt captured ✓";
     $("ricName").textContent = "PDF ready — will be saved with the expense";
     $("btnPhoto").style.display = "none";
+    $("btnGallery").style.display = "none";
     actions.style.display = "flex";
   } else {
     chip.classList.remove("ok");
     $("ricStatus").textContent = "No receipt";
     $("ricName").textContent = "";
     $("btnPhoto").style.display = "";
+    $("btnGallery").style.display = "";
     actions.style.display = "none";
   }
 }
@@ -963,8 +994,12 @@ async function expenseActions(exp, rec){
     await deliverFile(rec.blob, rec.filename, "application/pdf");
   }
   if(act === "replace" || act === "addRic"){
-    retakeTargetId = exp.id;
-    startCamera();
+    const src = await modal(act === "replace" ? "Replace receipt" : "Add receipt",
+      "How do you want to attach it?",
+      [{label:"📷 Take photo", value:"camera", cls:"btn-secondary"},
+       {label:"🖼️ Upload screenshot / image", value:"gallery", cls:"btn-secondary"},
+       {label:"Cancel", value:null, cls:"btn-secondary"}]);
+    if(src){ retakeTargetId = exp.id; startCapture(src); }
   }
   if(act === "delRic"){
     if(!rec.exportedAt){
