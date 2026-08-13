@@ -1,13 +1,12 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#F6F5F1">
-<title>Nota Spese · LTA</title>
+<title>Expense Note · LTA</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <style>
   :root{
     --paper:#F6F5F1; --surface:#FFFFFF; --ink:#1C2B33; --muted:#75807A;
@@ -110,8 +109,8 @@
 <body>
 
 <header>
-  <h1>Nota Spese</h1>
-  <p>Spese, ricevute e export — LTA US Advisors</p>
+  <h1>Expense Note</h1>
+  <p>Expenses, receipts and export — LTA US Advisors</p>
 </header>
 
 <main>
@@ -119,35 +118,40 @@
 
   <!-- ══════════ NUOVA SPESA ══════════ -->
   <section class="card">
-    <h2>Nuova spesa</h2>
+    <h2>New expense</h2>
 
     <div class="row2">
       <div>
-        <label for="fDate">Data</label>
+        <label for="fDate">Date</label>
         <input type="date" id="fDate">
       </div>
       <div>
-        <label for="fAmount">Importo</label>
+        <label for="fAmount">Amount</label>
         <input type="number" id="fAmount" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
       </div>
     </div>
 
-    <label for="fVendor">Fornitore / Luogo</label>
-    <input type="text" id="fVendor" placeholder="Es. Uber, Starbucks, Hotel…" autocomplete="off">
+    <label for="fVendor">Vendor / Place</label>
+    <input type="text" id="fVendor" placeholder="E.g. Uber, Starbucks, Hotel…" autocomplete="off">
 
     <div class="row2">
       <div>
-        <label for="fCategory">Categoria</label>
+        <label for="fCategory">Category</label>
         <select id="fCategory">
           <option value="TRAVEL MEALS">Travel Meals</option>
           <option value="LODGING">Lodging</option>
           <option value="AIR">Air</option>
-          <option value="TAXI">Taxi</option>
-          <option value="OTHER">Other</option>
+          <option value="TAXI/TOLLS/PARKING">Taxi / Tolls / Parking w/Tips</option>
+          <option value="AIR/AUTO RENTAL/GAS">Air / Auto Rental / Gas for Rental</option>
+          <option value="TEAM MEALS/EVENTS">Team Meals / Events</option>
+          <option value="TRAVEL/METRO">Travel / Metro</option>
+          <option value="DUES/MEMBERSHIPS">Dues / Memberships</option>
+          <option value="TRAVEL TRAIN">Travel Train</option>
+          <option value="TELEPHONE">Telephone</option>
         </select>
       </div>
       <div>
-        <label for="fCurrency">Valuta</label>
+        <label for="fCurrency">Currency</label>
         <select id="fCurrency">
           <option>USD</option><option>EUR</option>
         </select>
@@ -155,13 +159,13 @@
     </div>
 
     <label for="fPurpose">Business purpose</label>
-    <input type="text" id="fPurpose" placeholder="Es. Client meeting" autocomplete="off">
+    <input type="text" id="fPurpose" placeholder="E.g. Client meeting" autocomplete="off">
 
-    <label for="fAttendees">Partecipanti</label>
+    <label for="fAttendees">Attendees</label>
     <input type="text" id="fAttendees" value="Eldi Trimi" autocomplete="off">
 
-    <label for="fClient">Cliente</label>
-    <input type="text" id="fClient" list="clientList" placeholder="Es. SERIOPLAST" autocomplete="off">
+    <label for="fClient">Client</label>
+    <input type="text" id="fClient" list="clientList" placeholder="E.g. SERIOPLAST" autocomplete="off">
     <datalist id="clientList">
       <option value="SERIOPLAST"><option value="LTA">
     </datalist>
@@ -170,22 +174,22 @@
     <div class="receipt-zone">
       <div class="receipt-chip" id="ricChip">
         <div class="ric-info">
-          <div class="ric-status" id="ricStatus">Nessuna ricevuta</div>
+          <div class="ric-status" id="ricStatus">No receipt</div>
           <div class="ric-name" id="ricName"></div>
         </div>
-        <button class="btn-ghost" id="btnPhoto" type="button">📷 Fotografa</button>
+        <button class="btn-ghost" id="btnPhoto" type="button">📷 Take photo</button>
       </div>
       <div class="btn-row" id="ricActions" style="display:none">
-        <button class="btn-secondary" id="btnRicView" type="button">Visualizza</button>
-        <button class="btn-secondary" id="btnRicRetake" type="button">Rifai foto</button>
-        <button class="btn-danger" id="btnRicDelete" type="button">Elimina</button>
+        <button class="btn-secondary" id="btnRicView" type="button">View</button>
+        <button class="btn-secondary" id="btnRicRetake" type="button">Retake</button>
+        <button class="btn-danger" id="btnRicDelete" type="button">Delete</button>
       </div>
     </div>
 
     <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
 
     <div style="margin-top:16px">
-      <button class="btn-primary" id="btnSave" type="button">Salva spesa</button>
+      <button class="btn-primary" id="btnSave" type="button">Save expense</button>
     </div>
     <div class="msg" id="formMsg"></div>
   </section>
@@ -193,10 +197,10 @@
   <!-- ══════════ EXPORT ══════════ -->
   <section class="card">
     <h2>Export</h2>
-    <button class="btn-primary" id="btnExportZip" type="button">Scarica Excel + Ricevute (ZIP)</button>
+    <button class="btn-primary" id="btnExportZip" type="button">Download Excel + Receipts (ZIP)</button>
     <div class="btn-row">
-      <button class="btn-secondary" id="btnExportXlsx" type="button">Solo Excel</button>
-      <button class="btn-danger" id="btnDeleteAll" type="button">Cancella tutto</button>
+      <button class="btn-secondary" id="btnExportXlsx" type="button">Excel only</button>
+      <button class="btn-danger" id="btnDeleteAll" type="button">Delete all</button>
     </div>
     <div class="msg" id="exportMsg"></div>
   </section>
@@ -207,17 +211,17 @@
   </section>
 </main>
 
-<footer>I dati restano su questo dispositivo finché non li esporti. Esporta a fine mese.</footer>
+<footer>Data stays on this device until you export it. Export at the end of each month.</footer>
 
 <!-- ══════════ CROP VIEW ══════════ -->
 <div id="cropView">
-  <div class="crop-top">Trascina gli angoli sui bordi della ricevuta</div>
+  <div class="crop-top">Drag the corners to the edges of the receipt</div>
   <div id="cropStatus"></div>
   <div id="cropCanvasWrap"><canvas id="cropCanvas"></canvas></div>
   <div class="crop-actions">
-    <button class="btn-secondary" id="btnCropCancel" type="button">Annulla</button>
-    <button class="btn-secondary" id="btnCropRetake" type="button">Rifai foto</button>
-    <button class="btn-primary" id="btnCropOk" type="button">Conferma</button>
+    <button class="btn-secondary" id="btnCropCancel" type="button">Cancel</button>
+    <button class="btn-secondary" id="btnCropRetake" type="button">Retake photo</button>
+    <button class="btn-primary" id="btnCropOk" type="button">Confirm</button>
   </div>
 </div>
 
@@ -244,8 +248,8 @@ const LS_KEY = "ns_expenses_v2";
 const MAX_WORK_SIDE = 2400;   // downscale prima di QUALSIASI canvas (limite iOS)
 const MAX_PDF_SIDE  = 2000;   // lato max immagine dentro il PDF
 const JPEG_Q = 0.72;
-const MESI = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio",
-              "Agosto","Settembre","Ottobre","Novembre","Dicembre"];
+const MESI = ["January","February","March","April","May","June","July",
+              "August","September","October","November","December"];
 
 const $ = id => document.getElementById(id);
 
@@ -310,7 +314,7 @@ async function idbAll(){
 /* ─────────── Utility ─────────── */
 function sanitizeName(s){
   return (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"")
-    .replace(/[^A-Za-z0-9 _-]/g,"").trim().replace(/\s+/g,"_").slice(0,40) || "Ricevuta";
+    .replace(/[^A-Za-z0-9 _-]/g,"").trim().replace(/\s+/g,"_").slice(0,40) || "Receipt";
 }
 function fmtAmt(n, cur){
   const v = Number(n).toFixed(2);
@@ -492,19 +496,19 @@ $("fDate").addEventListener("input", () => { userTouchedDate = true; });
 async function runOcrPrefill(canvas){
   const nameEl = $("ricName");
   try{
-    nameEl.textContent = "Leggo la ricevuta…";
+    nameEl.textContent = "Reading the receipt…";
     const worker = await getOcrWorker();
     const { data } = await worker.recognize(canvas);
     const r = parseReceiptText(data.text || "");
     let filled = [];
-    if(r.amount && !$("fAmount").value){ $("fAmount").value = r.amount.toFixed(2); filled.push("importo"); }
-    if(r.vendor && !$("fVendor").value.trim()){ $("fVendor").value = r.vendor; filled.push("fornitore"); }
-    if(r.dateISO && !userTouchedDate){ $("fDate").value = r.dateISO; filled.push("data"); }
+    if(r.amount && !$("fAmount").value){ $("fAmount").value = r.amount.toFixed(2); filled.push("amount"); }
+    if(r.vendor && !$("fVendor").value.trim()){ $("fVendor").value = r.vendor; filled.push("vendor"); }
+    if(r.dateISO && !userTouchedDate){ $("fDate").value = r.dateISO; filled.push("date"); }
     nameEl.textContent = filled.length
-      ? `Precompilati: ${filled.join(", ")} — controlla`
-      : "PDF pronto — compila i campi a mano";
+      ? `Prefilled: ${filled.join(", ")} — check it`
+      : "PDF ready — fill in the fields manually";
   } catch(e){
-    nameEl.textContent = "PDF pronto — lettura automatica non riuscita";
+    nameEl.textContent = "PDF ready — automatic reading failed";
   }
 }
 
@@ -526,7 +530,7 @@ $("cameraInput").addEventListener("change", async e => {
   const f = e.target.files && e.target.files[0];
   if(!f) return;
   try { await openCrop(f); }
-  catch(err){ showMsg($("formMsg"), "Errore lettura foto: " + err.message, "err"); }
+  catch(err){ showMsg($("formMsg"), "Photo read error: " + err.message, "err"); }
 });
 
 async function openCrop(file){
@@ -554,14 +558,14 @@ async function openCrop(file){
   $("cropView").classList.add("open");
   drawCrop();
 
-  $("cropStatus").textContent = "Rilevamento bordi…";
+  $("cropStatus").textContent = "Detecting edges…";
   const hasCv = await loadOpenCV();
   if(hasCv){
     const det = detectQuad(workCanvas);
-    if(det){ corners = det; $("cropStatus").textContent = "Bordi rilevati — correggi se serve"; }
-    else $("cropStatus").textContent = "Bordi non rilevati — posiziona gli angoli a mano";
+    if(det){ corners = det; $("cropStatus").textContent = "Edges detected — adjust if needed"; }
+    else $("cropStatus").textContent = "Edges not detected — position the corners manually";
   } else {
-    $("cropStatus").textContent = "Ritaglio manuale — posiziona gli angoli";
+    $("cropStatus").textContent = "Manual crop — position the corners";
   }
   drawCrop();
 }
@@ -734,7 +738,7 @@ function closeCrop(){
 /* ── Conferma: warp/crop → PDF ── */
 $("btnCropOk").addEventListener("click", async () => {
   const btn = $("btnCropOk");
-  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Elaboro…';
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Processing…';
   try{
     const outCanvas = extractDocument(workCanvas, corners);
     const blob = await canvasToPdfBlob(outCanvas);
@@ -761,10 +765,10 @@ $("btnCropOk").addEventListener("click", async () => {
       runOcrPrefill(outCanvas); // prepopola data/importo/fornitore in background
     }
   } catch(err){
-    showMsg($("formMsg"), "Errore elaborazione: " + err.message, "err");
+    showMsg($("formMsg"), "Processing error: " + err.message, "err");
     $("cropView").classList.remove("open");
   } finally {
-    btn.disabled = false; btn.textContent = "Conferma";
+    btn.disabled = false; btn.textContent = "Confirm";
   }
 });
 
@@ -832,13 +836,13 @@ function updateReceiptChip(){
   const chip = $("ricChip"), actions = $("ricActions");
   if(pendingReceipt){
     chip.classList.add("ok");
-    $("ricStatus").textContent = "Ricevuta acquisita ✓";
-    $("ricName").textContent = "PDF pronto — verrà salvato con la spesa";
+    $("ricStatus").textContent = "Receipt captured ✓";
+    $("ricName").textContent = "PDF ready — will be saved with the expense";
     $("btnPhoto").style.display = "none";
     actions.style.display = "flex";
   } else {
     chip.classList.remove("ok");
-    $("ricStatus").textContent = "Nessuna ricevuta";
+    $("ricStatus").textContent = "No receipt";
     $("ricName").textContent = "";
     $("btnPhoto").style.display = "";
     actions.style.display = "none";
@@ -868,9 +872,9 @@ $("btnSave").addEventListener("click", async () => {
     createdAt: Date.now(),
     hasReceipt: !!pendingReceipt
   };
-  if(!exp.date){ showMsg($("formMsg"), "Inserisci la data.", "err"); return; }
-  if(!exp.amount || exp.amount <= 0){ showMsg($("formMsg"), "Inserisci un importo valido.", "err"); return; }
-  if(!exp.vendor){ showMsg($("formMsg"), "Inserisci il fornitore.", "err"); return; }
+  if(!exp.date){ showMsg($("formMsg"), "Enter the date.", "err"); return; }
+  if(!exp.amount || exp.amount <= 0){ showMsg($("formMsg"), "Enter a valid amount.", "err"); return; }
+  if(!exp.vendor){ showMsg($("formMsg"), "Enter the vendor.", "err"); return; }
 
   try{
     if(pendingReceipt){
@@ -885,10 +889,10 @@ $("btnSave").addEventListener("click", async () => {
     $("fAmount").value = ""; $("fVendor").value = ""; $("fPurpose").value = "";
     userTouchedDate = false;
     updateReceiptChip();
-    showMsg($("formMsg"), "Spesa salvata ✓", "ok");
+    showMsg($("formMsg"), "Expense saved ✓", "ok");
     renderList(); updateBanner();
   } catch(err){
-    showMsg($("formMsg"), "Errore salvataggio: " + err.message, "err");
+    showMsg($("formMsg"), "Save error: " + err.message, "err");
   }
 });
 
@@ -897,7 +901,7 @@ async function renderList(){
   const wrap = $("expList");
   wrap.innerHTML = "";
   if(expenses.length === 0){
-    wrap.innerHTML = '<div class="empty">Nessuna spesa registrata.\nInserisci la prima qui sopra.</div>';
+    wrap.innerHTML = '<div class="empty">No expenses yet.\nAdd the first one above.</div>';
     return;
   }
   const receipts = await idbAll();
@@ -917,10 +921,10 @@ async function renderList(){
     const rec = rMap.get(exp.id);
     const div = document.createElement("div");
     div.className = "exp";
-    let flag = '<span class="flag-none">— nessuna ricevuta</span>';
+    let flag = '<span class="flag-none">— no receipt</span>';
     if(rec) flag = rec.exportedAt
-      ? '<span class="flag-exported">📎 esportata ✓</span>'
-      : '<span class="flag-pending">📎 da esportare</span>';
+      ? '<span class="flag-exported">📎 exported ✓</span>'
+      : '<span class="flag-pending">📎 to export</span>';
     div.innerHTML = `
       <div class="exp-main">
         <div class="exp-vendor"></div>
@@ -942,17 +946,17 @@ async function renderList(){
 async function expenseActions(exp, rec){
   const btns = [];
   if(rec){
-    btns.push({ label:"Visualizza ricevuta", value:"view", cls:"btn-secondary" });
-    btns.push({ label:"Sostituisci ricevuta", value:"replace", cls:"btn-secondary" });
-    btns.push({ label:"Elimina solo la ricevuta", value:"delRic", cls:"btn-danger" });
+    btns.push({ label:"View receipt", value:"view", cls:"btn-secondary" });
+    btns.push({ label:"Replace receipt", value:"replace", cls:"btn-secondary" });
+    btns.push({ label:"Delete receipt only", value:"delRic", cls:"btn-danger" });
   } else {
-    btns.push({ label:"Aggiungi ricevuta", value:"addRic", cls:"btn-secondary" });
+    btns.push({ label:"Add receipt", value:"addRic", cls:"btn-secondary" });
   }
-  btns.push({ label:"Elimina spesa", value:"delExp", cls:"btn-danger" });
-  btns.push({ label:"Chiudi", value:null, cls:"btn-secondary" });
+  btns.push({ label:"Delete expense", value:"delExp", cls:"btn-danger" });
+  btns.push({ label:"Close", value:null, cls:"btn-secondary" });
 
   const info = `${exp.date} · ${fmtAmt(exp.amount, exp.currency)}` +
-    (rec ? `\n${rec.filename}${rec.exportedAt ? " · esportata ✓" : " · NON ancora esportata"}` : "");
+    (rec ? `\n${rec.filename}${rec.exportedAt ? " · exported ✓" : " · NOT exported yet"}` : "");
   const act = await modal(exp.vendor, info, btns);
 
   if(act === "view"){
@@ -964,10 +968,10 @@ async function expenseActions(exp, rec){
   }
   if(act === "delRic"){
     if(!rec.exportedAt){
-      const ok = await modal("Ricevuta non esportata",
-        "Questa ricevuta non è mai stata esportata. Se la elimini, va persa.",
-        [{label:"Elimina comunque", value:true, cls:"btn-danger"},
-         {label:"Annulla", value:false, cls:"btn-secondary"}]);
+      const ok = await modal("Receipt not exported",
+        "This receipt has never been exported. If you delete it, it is gone.",
+        [{label:"Delete anyway", value:true, cls:"btn-danger"},
+         {label:"Cancel", value:false, cls:"btn-secondary"}]);
       if(!ok) return;
     }
     await idbDelete(exp.id);
@@ -975,12 +979,12 @@ async function expenseActions(exp, rec){
     renderList(); updateBanner();
   }
   if(act === "delExp"){
-    let warn = "La spesa verrà eliminata.";
+    let warn = "The expense will be deleted.";
     if(rec && !rec.exportedAt)
-      warn = "Questa spesa ha una ricevuta NON ancora esportata.\nEliminandola perdi anche il PDF.";
-    const ok = await modal("Eliminare la spesa?", warn,
-      [{label:"Elimina", value:true, cls:"btn-danger"},
-       {label:"Annulla", value:false, cls:"btn-secondary"}]);
+      warn = "This expense has a receipt that was NEVER exported.\nDeleting it also deletes the PDF.";
+    const ok = await modal("Delete this expense?", warn,
+      [{label:"Delete", value:true, cls:"btn-danger"},
+       {label:"Cancel", value:false, cls:"btn-secondary"}]);
     if(!ok) return;
     await idbDelete(exp.id); // mai ricevute orfane
     expenses = expenses.filter(x => x.id !== exp.id);
@@ -989,29 +993,66 @@ async function expenseActions(exp, rec){
   }
 }
 
-/* ─────────── Export ─────────── */
-function buildWorkbook(list){
-  const CATS = ["TRAVEL MEALS","LODGING","AIR","TAXI","OTHER"];
-  const header = ["DATE","VENDOR","BUSINESS PURPOSE","ATTENDEES","CLIENT","CURRENCY",
-                  ...CATS, "TOTAL"];
-  const rows = [header];
-  const sorted = [...list].sort((a,b) => a.date.localeCompare(b.date));
-  sorted.forEach(e => {
-    const cat = CATS.map(c => c === e.category ? Number(e.amount) : "");
-    rows.push([e.date, e.vendor, e.purpose, e.attendees, e.client, e.currency,
-               ...cat, Number(e.amount)]);
-  });
-  const totals = ["","","","","","TOTALI"];
-  CATS.forEach(c => totals.push(
-    sorted.filter(e => e.category === c).reduce((s,e) => s + Number(e.amount), 0) || ""));
-  totals.push(sorted.reduce((s,e) => s + Number(e.amount), 0));
-  rows.push(totals);
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws["!cols"] = header.map((h,i) => ({ wch: i===2 ? 28 : (i===1||i===3 ? 20 : 13) }));
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Nota Spese");
-  return wb;
+/* ─────────── Export: fills the official LTA template ─────────── */
+let excelJsPromise = null;
+function getExcelJS(){
+  if(!excelJsPromise){
+    excelJsPromise = loadScript(
+      "https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"
+    ).catch(e => { excelJsPromise = null; throw e; });
+  }
+  return excelJsPromise;
 }
+// mapping app category → template column (Sheet1, rows 16–53)
+const CATEGORY_COL = {
+  "AIR/AUTO RENTAL/GAS": "F",
+  "TAXI/TOLLS/PARKING": "G",
+  "TRAVEL MEALS": "H",
+  "AIR": "I",
+  "LODGING": "J",
+  "TEAM MEALS/EVENTS": "K",
+  "TRAVEL/METRO": "L",
+  "DUES/MEMBERSHIPS": "M",
+  "TRAVEL TRAIN": "N",
+  "TELEPHONE": "O",
+  // legacy values from earlier app versions
+  "TAXI": "G", "OTHER": "L"
+};
+const TPL_FIRST = 16, TPL_LAST = 115;
+
+async function buildFilledTemplate(list){
+  await getExcelJS();
+  const resp = await fetch("template.xlsx", { cache: "no-store" });
+  if(!resp.ok) throw new Error("template.xlsx not found in the repo");
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(await resp.arrayBuffer());
+  const ws = wb.getWorksheet("Sheet1") || wb.worksheets[0];
+
+  const today = new Date();
+  ws.getCell("D7").value = new Date(Date.UTC(
+    today.getFullYear(), today.getMonth(), today.getDate()));
+
+  const sorted = [...list].sort((a,b) => a.date.localeCompare(b.date));
+  const cap = TPL_LAST - TPL_FIRST + 1;
+  if(sorted.length > cap)
+    throw new Error(`The form holds ${cap} rows; you have ${sorted.length} expenses. Export in two batches.`);
+
+  sorted.forEach((e, i) => {
+    const r = TPL_FIRST + i;
+    const [y,m,d] = e.date.split("-").map(Number);
+    const dCell = ws.getCell("B"+r);
+    dCell.value = new Date(Date.UTC(y, m-1, d));
+    if(!dCell.numFmt) dCell.numFmt = "mm/dd/yyyy";
+    ws.getCell("C"+r).value = e.vendor;
+    ws.getCell("D"+r).value = e.purpose || "";
+    ws.getCell("E"+r).value = e.attendees || "";
+    const col = CATEGORY_COL[(e.category||"").toUpperCase()] || "G";
+    ws.getCell(col+r).value = Number(e.amount);
+    if(e.client) ws.getCell("Q"+r).value = e.client;
+  });
+  return await wb.xlsx.writeBuffer();
+}
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 function exportLabel(){
   const months = [...new Set(expenses.map(e => e.date.slice(0,7)))];
   if(months.length === 1){
@@ -1022,28 +1063,26 @@ function exportLabel(){
 }
 
 $("btnExportXlsx").addEventListener("click", async () => {
-  if(expenses.length === 0){ showMsg($("exportMsg"), "Nessuna spesa da esportare.", "err"); return; }
+  if(expenses.length === 0){ showMsg($("exportMsg"), "No expenses to export.", "err"); return; }
   try{
-    const wb = buildWorkbook(expenses);
-    const out = XLSX.write(wb, { bookType:"xlsx", type:"array" });
-    const blob = new Blob([out], { type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-    await deliverFile(blob, `Nota_Spese_${exportLabel()}.xlsx`, blob.type);
-  } catch(err){ showMsg($("exportMsg"), "Errore export: " + err.message, "err"); }
+    const buf = await buildFilledTemplate(expenses);
+    const blob = new Blob([buf], { type: XLSX_MIME });
+    await deliverFile(blob, `Expense_Note_${exportLabel()}.xlsx`, XLSX_MIME);
+  } catch(err){ showMsg($("exportMsg"), "Export error: " + err.message, "err"); }
 });
 
 $("btnExportZip").addEventListener("click", async () => {
-  if(expenses.length === 0){ showMsg($("exportMsg"), "Nessuna spesa da esportare.", "err"); return; }
+  if(expenses.length === 0){ showMsg($("exportMsg"), "No expenses to export.", "err"); return; }
   const btn = $("btnExportZip");
-  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Preparo l\u2019archivio…';
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Building the archive…';
   try{
     const label = exportLabel();
     const zip = new JSZip();
-    const wb = buildWorkbook(expenses);
-    const xout = XLSX.write(wb, { bookType:"xlsx", type:"array" });
-    zip.file(`Nota_Spese_${label}.xlsx`, xout);
+    const buf = await buildFilledTemplate(expenses);
+    zip.file(`Expense_Note_${label}.xlsx`, buf);
     const receipts = await idbAll();
     const validIds = new Set(expenses.map(e => e.id));
-    const folder = zip.folder("Ricevute");
+    const folder = zip.folder("Receipts");
     let n = 0;
     for(const r of receipts){
       if(!validIds.has(r.expenseId)) continue;
@@ -1052,20 +1091,20 @@ $("btnExportZip").addEventListener("click", async () => {
     }
     const blob = await zip.generateAsync({ type:"blob",
       compression:"DEFLATE", compressionOptions:{ level:6 } });
-    const delivered = await deliverFile(blob, `Nota_Spese_${label}.zip`, "application/zip");
+    const delivered = await deliverFile(blob, `Expense_Note_${label}.zip`, "application/zip");
     if(delivered){
-      // segna le ricevute come esportate SOLO dopo consegna riuscita
+      // mark receipts as exported ONLY after successful delivery
       const now = Date.now();
       for(const r of receipts){
         if(validIds.has(r.expenseId)){ r.exportedAt = now; await idbPut(r); }
       }
-      showMsg($("exportMsg"), `Archivio pronto: Excel + ${n} ricevute.`, "ok");
+      showMsg($("exportMsg"), `Archive ready: Excel + ${n} receipts.`, "ok");
       renderList(); updateBanner();
     }
   } catch(err){
-    showMsg($("exportMsg"), "Errore export: " + err.message, "err");
+    showMsg($("exportMsg"), "Export error: " + err.message, "err");
   } finally {
-    btn.disabled = false; btn.textContent = "Scarica Excel + Ricevute (ZIP)";
+    btn.disabled = false; btn.textContent = "Download Excel + Receipts (ZIP)";
   }
 });
 
@@ -1074,25 +1113,25 @@ $("btnDeleteAll").addEventListener("click", async () => {
   const receipts = await idbAll();
   const validIds = new Set(expenses.map(e => e.id));
   const unexported = receipts.filter(r => validIds.has(r.expenseId) && !r.exportedAt).length;
-  let text = `Verranno eliminate ${expenses.length} spese e tutte le ricevute.`;
+  let text = `This will delete ${expenses.length} expenses and all receipts.`;
   if(unexported > 0)
-    text = `ATTENZIONE: ${unexported} ricevut${unexported===1?"a":"e"} NON ${unexported===1?"è stata":"sono state"} ancora esportat${unexported===1?"a":"e"}.\n\nSe cancelli ora, quei PDF vanno persi per sempre.\nEsporta prima lo ZIP, poi cancella.`;
-  const ok = await modal("Cancellare tutto?", text,
-    [{label: unexported > 0 ? "Ho capito, cancella comunque" : "Cancella tutto",
+    text = `WARNING: ${unexported} receipt${unexported===1?" has":"s have"} NOT been exported yet.\n\nIf you delete now, those PDFs are lost forever.\nExport the ZIP first, then delete.`;
+  const ok = await modal("Delete everything?", text,
+    [{label: unexported > 0 ? "I understand, delete anyway" : "Delete everything",
       value:true, cls:"btn-danger"},
-     {label:"Annulla", value:false, cls:"btn-secondary"}]);
+     {label:"Cancel", value:false, cls:"btn-secondary"}]);
   if(!ok) return;
   if(unexported > 0){
-    const ok2 = await modal("Ultima conferma",
-      `Confermi la cancellazione definitiva di ${unexported} ricevut${unexported===1?"a":"e"} mai esportat${unexported===1?"a":"e"}?`,
-      [{label:"Sì, cancella definitivamente", value:true, cls:"btn-danger"},
-       {label:"No, torna indietro", value:false, cls:"btn-secondary"}]);
+    const ok2 = await modal("Final confirmation",
+      `Confirm permanent deletion of ${unexported} never-exported receipt${unexported===1?"":"s"}?`,
+      [{label:"Yes, delete permanently", value:true, cls:"btn-danger"},
+       {label:"No, go back", value:false, cls:"btn-secondary"}]);
     if(!ok2) return;
   }
   for(const r of receipts) await idbDelete(r.expenseId);
   expenses = []; saveExpenses(expenses);
   renderList(); updateBanner();
-  showMsg($("exportMsg"), "Tutti i dati sono stati cancellati.", "ok");
+  showMsg($("exportMsg"), "All data deleted.", "ok");
 });
 
 /* ─────────── Banner promemoria export ─────────── */
@@ -1105,7 +1144,7 @@ async function updateBanner(){
       Date.now() - r.createdAt > 14*24*3600*1000);
     if(old.length > 0){
       b.style.display = "block";
-      b.textContent = `⚠️ Hai ${old.length} ricevut${old.length===1?"a":"e"} da oltre 2 settimane mai esportat${old.length===1?"a":"e"}. Safari può cancellare i dati locali dei siti poco usati: scarica lo ZIP appena puoi.`;
+      b.textContent = `\u26a0\ufe0f You have ${old.length} receipt${old.length===1?"":"s"} older than 2 weeks that ${old.length===1?"was":"were"} never exported. Safari can clear local data of rarely used sites: download the ZIP as soon as you can.`;
     } else b.style.display = "none";
   } catch(e){ b.style.display = "none"; }
 }
