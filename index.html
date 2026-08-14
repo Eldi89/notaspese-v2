@@ -56,6 +56,14 @@
   .receipt-chip .ric-status{font-size:12px; color:var(--muted);}
   .receipt-chip.ok .ric-status{color:var(--ok); font-weight:600;}
 
+  /* Total bar */
+  .total-bar{background:var(--ink); color:#fff; border-radius:12px; padding:12px 16px;
+    margin:14px 0 4px; display:flex; align-items:baseline; justify-content:space-between;}
+  .total-bar .tb-label{font-size:12px; font-weight:700; text-transform:uppercase;
+    letter-spacing:.08em; color:#B9C4BE;}
+  .total-bar .tb-amt{font-family:var(--mono); font-size:19px; font-weight:700;}
+  .total-bar .tb-sub{font-size:12px; color:#B9C4BE; margin-left:8px;}
+
   /* Expense list, ledger style */
   .month-head{font-size:12px; font-weight:700; text-transform:uppercase;
     letter-spacing:.08em; color:var(--muted); margin:18px 4px 8px;}
@@ -211,6 +219,10 @@
 
   <!-- ══════════ SPESE ══════════ -->
   <section>
+    <div class="total-bar" id="totalBar" style="display:none">
+      <span class="tb-label">Total entered</span>
+      <span><span class="tb-amt" id="totalAmt"></span><span class="tb-sub" id="totalSub"></span></span>
+    </div>
     <div id="expList"></div>
   </section>
 </main>
@@ -931,6 +943,20 @@ $("btnSave").addEventListener("click", async () => {
 async function renderList(){
   const wrap = $("expList");
   wrap.innerHTML = "";
+  // totale di tutte le spese inserite, separato per valuta
+  const bar = $("totalBar");
+  if(expenses.length === 0){
+    bar.style.display = "none";
+  } else {
+    const sums = {};
+    expenses.forEach(e => {
+      sums[e.currency] = (sums[e.currency] || 0) + Number(e.amount);
+    });
+    const parts = Object.entries(sums).map(([cur,v]) => fmtAmt(v, cur));
+    $("totalAmt").textContent = parts.join("  +  ");
+    $("totalSub").textContent = `· ${expenses.length} expense${expenses.length===1?"":"s"}`;
+    bar.style.display = "flex";
+  }
   if(expenses.length === 0){
     wrap.innerHTML = '<div class="empty">No expenses yet.\nAdd the first one above.</div>';
     return;
