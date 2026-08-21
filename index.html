@@ -514,20 +514,73 @@ function parseReceiptText(text){
 let userTouchedDate = false;
 $("fDate").addEventListener("input", () => { userTouchedDate = true; });
 
+function applyPrefill(r){
+  const nameEl = $("ricName");
+  let filled = [];
+  if(r.amount && !$("fAmount").value){ $("fAmount").value = r.amount.toFixed(2); filled.push("amount"); }
+  if(r.vendor && !$("fVendor").value.trim()){ $("fVendor").value = r.vendor; filled.push("vendor"); }
+  if(r.dateISO && !userTouchedDate){ $("fDate").value = r.dateISO; filled.push("date"); }
+  nameEl.textContent = filled.length
+    ? `Prefilled: ${filled.join(", ")} — check it`
+    : "PDF ready — fill in the fields manually";
+}
+
 async function runOcrPrefill(canvas){
   const nameEl = $("ricName");
   try{
     nameEl.textContent = "Reading the receipt…";
     const worker = await getOcrWorker();
     const { data } = await worker.recognize(canvas);
-    const r = parseReceiptText(data.text || "");
-    let filled = [];
-    if(r.amount && !$("fAmount").value){ $("fAmount").value = r.amount.toFixed(2); filled.push("amount"); }
-    if(r.vendor && !$("fVendor").value.trim()){ $("fVendor").value = r.vendor; filled.push("vendor"); }
-    if(r.dateISO && !userTouchedDate){ $("fDate").value = r.dateISO; filled.push("date"); }
-    nameEl.textContent = filled.length
-      ? `Prefilled: ${filled.join(", ")} — check it`
-      : "PDF ready — fill in the fields manually";
+    applyPrefill(parseReceiptText(data.text || ""));
+  } catch(e){
+    nameEl.textContent = "PDF ready — automatic reading failed";
+  }
+}
+
+/* ── Prefill da PDF caricato: testo nativo se c'è, altrimenti OCR sulla pagina 1 ── */
+let pdfJsPromise = null;
+function getPdfJs(){
+  if(!pdfJsPromise){
+    pdfJsPromise = (async () => {
+      await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js");
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    })().catch(e => { pdfJsPromise = null; throw e; });
+  }
+  return pdfJsPromise;
+}
+async function prefillFromPdf(file){
+  const nameEl = $("ricName");
+  try{
+    nameEl.textContent = "Reading the receipt…";
+    await getPdfJs();
+    const doc = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    const page = await doc.getPage(1);
+    // ricostruisce le righe raggruppando gli item per coordinata Y
+    const tc = await page.getTextContent();
+    const rows = new Map();
+    for(const it of tc.items){
+      if(!it.str || !it.str.trim()) continue;
+      const y = Math.round(it.transform[5]);
+      if(!rows.has(y)) rows.set(y, []);
+      rows.get(y).push({ x: it.transform[4], s: it.str });
+    }
+    const text = [...rows.entries()].sort((a,b) => b[0] - a[0])
+      .map(([,arr]) => arr.sort((a,b) => a.x - b.x).map(o => o.s).join(" "))
+      .join("\n");
+
+    if(text.replace(/\s/g,"").length >= 30){
+      applyPrefill(parseReceiptText(text));   // PDF digitale: testo esatto
+      return;
+    }
+    // PDF scansionato: renderizza la pagina 1 e usa l'OCR
+    const vp = page.getViewport({ scale: 1 });
+    const scale = Math.min(3, 1600 / Math.max(vp.width, vp.height));
+    const vp2 = page.getViewport({ scale });
+    const c = document.createElement("canvas");
+    c.width = Math.round(vp2.width); c.height = Math.round(vp2.height);
+    await page.render({ canvasContext: c.getContext("2d"), viewport: vp2 }).promise;
+    await runOcrPrefill(c);
   } catch(e){
     nameEl.textContent = "PDF ready — automatic reading failed";
   }
@@ -563,7 +616,8 @@ $("galleryInput").addEventListener("change", async e => {
   if(!f) return;
   try {
     if(f.type === "application/pdf" || /\.pdf$/i.test(f.name)){
-      await commitReceipt(f); // PDF già pronto: nessun ritaglio/conversione
+      const isNew = await commitReceipt(f); // PDF già pronto: nessun ritaglio/conversione
+      if(isNew) prefillFromPdf(f); // prepopola data/importo/fornitore dal contenuto
     } else {
       await openCrop(f, true);
     }
