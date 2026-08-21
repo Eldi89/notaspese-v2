@@ -214,6 +214,11 @@
       <button class="btn-secondary" id="btnExportXlsx" type="button">Excel only</button>
       <button class="btn-danger" id="btnDeleteAll" type="button">Delete all</button>
     </div>
+    <div class="btn-row">
+      <button class="btn-secondary" id="btnBackup" type="button">Backup</button>
+      <button class="btn-secondary" id="btnRestore" type="button">Restore</button>
+    </div>
+    <input type="file" id="restoreInput" accept=".zip,application/zip" hidden>
     <div class="msg" id="exportMsg"></div>
   </section>
 
@@ -1203,6 +1208,78 @@ $("btnDeleteAll").addEventListener("click", async () => {
   expenses = []; saveExpenses(expenses);
   renderList(); updateBanner();
   showMsg($("exportMsg"), "All data deleted.", "ok");
+});
+
+/* ─────────── Backup / Restore (spese + PDF in un unico ZIP) ─────────── */
+$("btnBackup").addEventListener("click", async () => {
+  if(expenses.length === 0){ showMsg($("exportMsg"), "Nothing to back up.", "err"); return; }
+  const btn = $("btnBackup");
+  btn.disabled = true; btn.textContent = "Backing up…";
+  try{
+    const zip = new JSZip();
+    const receipts = (await idbAll()).filter(r => expenses.some(e => e.id === r.expenseId));
+    const manifest = {
+      app: "notaspese", version: 1,
+      exportedAt: new Date().toISOString(),
+      expenses,
+      receipts: receipts.map(r => ({ expenseId: r.expenseId, filename: r.filename,
+        createdAt: r.createdAt, exportedAt: r.exportedAt, file: `blobs/${r.expenseId}.pdf` }))
+    };
+    zip.file("backup.json", JSON.stringify(manifest));
+    const folder = zip.folder("blobs");
+    for(const r of receipts) folder.file(`${r.expenseId}.pdf`, r.blob);
+    const blob = await zip.generateAsync({ type:"blob",
+      compression:"DEFLATE", compressionOptions:{ level:6 } });
+    const name = `NotaSpese_Backup_${new Date().toISOString().slice(0,10)}.zip`;
+    const delivered = await deliverFile(blob, name, "application/zip");
+    if(delivered)
+      showMsg($("exportMsg"), `Backup ready: ${expenses.length} expenses, ${receipts.length} receipts.`, "ok");
+  } catch(err){ showMsg($("exportMsg"), "Backup error: " + err.message, "err"); }
+  finally { btn.disabled = false; btn.textContent = "Backup"; }
+});
+
+$("btnRestore").addEventListener("click", () => {
+  $("restoreInput").value = ""; $("restoreInput").click();
+});
+$("restoreInput").addEventListener("change", async e => {
+  const f = e.target.files && e.target.files[0];
+  if(!f) return;
+  try{
+    const zip = await JSZip.loadAsync(f);
+    const entry = zip.file("backup.json");
+    if(!entry) throw new Error("this is not a Nota Spese backup (backup.json missing)");
+    const manifest = JSON.parse(await entry.async("string"));
+    if(!Array.isArray(manifest.expenses)) throw new Error("backup file corrupted");
+    const existing = new Set(expenses.map(x => x.id));
+    const newExp = manifest.expenses.filter(x => x && x.id && !existing.has(x.id));
+    const dupes = manifest.expenses.length - newExp.length;
+    const ok = await modal("Restore backup?",
+      `The file contains ${manifest.expenses.length} expense${manifest.expenses.length===1?"":"s"}.\n` +
+      `${newExp.length} will be imported` +
+      (dupes > 0 ? `, ${dupes} already exist here and will be skipped.` : `.`) +
+      `\nNothing currently saved will be deleted.`,
+      [{label:"Import", value:true, cls:"btn-primary"},
+       {label:"Cancel", value:false, cls:"btn-secondary"}]);
+    if(!ok) return;
+    let nRic = 0;
+    for(const exp of newExp){
+      expenses.push(exp);
+      const meta = (manifest.receipts || []).find(r => r.expenseId === exp.id);
+      const zEntry = meta && meta.file ? zip.file(meta.file) : null;
+      if(zEntry){
+        const ab = await zEntry.async("arraybuffer");
+        await idbPut({ expenseId: exp.id,
+          filename: meta.filename || (exp.id + ".pdf"),
+          blob: new Blob([ab], { type: "application/pdf" }),
+          createdAt: meta.createdAt || Date.now(),
+          exportedAt: meta.exportedAt || null });
+        exp.hasReceipt = true; nRic++;
+      }
+    }
+    saveExpenses(expenses);
+    renderList(); updateBanner();
+    showMsg($("exportMsg"), `Imported: ${newExp.length} expenses, ${nRic} receipts.`, "ok");
+  } catch(err){ showMsg($("exportMsg"), "Restore error: " + err.message, "err"); }
 });
 
 /* ─────────── Banner promemoria export ─────────── */
