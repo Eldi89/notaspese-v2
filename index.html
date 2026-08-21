@@ -198,7 +198,7 @@
     </div>
 
     <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
-    <input type="file" id="galleryInput" accept="image/*" hidden>
+    <input type="file" id="galleryInput" accept="image/*,application/pdf" hidden>
 
     <div style="margin-top:16px">
       <button class="btn-primary" id="btnSave" type="button">Save expense</button>
@@ -556,9 +556,37 @@ $("cameraInput").addEventListener("change", async e => {
 $("galleryInput").addEventListener("change", async e => {
   const f = e.target.files && e.target.files[0];
   if(!f) return;
-  try { await openCrop(f, true); }
+  try {
+    if(f.type === "application/pdf" || /\.pdf$/i.test(f.name)){
+      await commitReceipt(f); // PDF già pronto: nessun ritaglio/conversione
+    } else {
+      await openCrop(f, true);
+    }
+  }
   catch(err){ showMsg($("formMsg"), "Photo read error: " + err.message, "err"); }
 });
+
+/* Associa il PDF alla spesa: pendente (nuova spesa) o diretto (spesa esistente) */
+async function commitReceipt(blob){
+  if(pendingReceipt) URL.revokeObjectURL(pendingReceipt.url);
+  pendingReceipt = { blob, url: URL.createObjectURL(blob) };
+  if(retakeTargetId){
+    const exp = expenses.find(x => x.id === retakeTargetId);
+    if(exp){
+      const names = new Set((await idbAll())
+        .filter(r => r.expenseId !== exp.id).map(r => r.filename));
+      await idbPut({ expenseId: exp.id, filename: receiptFilename(exp, names),
+                     blob: pendingReceipt.blob, createdAt: Date.now(), exportedAt: null });
+      exp.hasReceipt = true; saveExpenses(expenses);
+      URL.revokeObjectURL(pendingReceipt.url); pendingReceipt = null;
+      retakeTargetId = null;
+      renderList(); updateBanner();
+    }
+    return false; // ricevuta di spesa esistente: niente prefill
+  }
+  updateReceiptChip();
+  return true; // nuova spesa: prefill possibile
+}
 
 async function openCrop(file, isScreenshot){
   // 1. Decode + downscale PRIMA di ogni elaborazione (vincolo memoria iOS)
@@ -783,28 +811,10 @@ $("btnCropOk").addEventListener("click", async () => {
   try{
     const outCanvas = extractDocument(workCanvas, corners);
     const blob = await canvasToPdfBlob(outCanvas);
-    if(pendingReceipt) URL.revokeObjectURL(pendingReceipt.url);
-    pendingReceipt = { blob, url: URL.createObjectURL(blob) };
     $("cropView").classList.remove("open");
     workCanvas = null;
-
-    if(retakeTargetId){
-      // sostituzione ricevuta di una spesa già salvata
-      const exp = expenses.find(x => x.id === retakeTargetId);
-      if(exp){
-        const names = new Set((await idbAll())
-          .filter(r => r.expenseId !== exp.id).map(r => r.filename));
-        await idbPut({ expenseId: exp.id, filename: receiptFilename(exp, names),
-                       blob: pendingReceipt.blob, createdAt: Date.now(), exportedAt: null });
-        exp.hasReceipt = true; saveExpenses(expenses);
-        URL.revokeObjectURL(pendingReceipt.url); pendingReceipt = null;
-        retakeTargetId = null;
-        renderList(); updateBanner();
-      }
-    } else {
-      updateReceiptChip();
-      runOcrPrefill(outCanvas); // prepopola data/importo/fornitore in background
-    }
+    const isNew = await commitReceipt(blob);
+    if(isNew) runOcrPrefill(outCanvas); // prepopola data/importo/fornitore in background
   } catch(err){
     showMsg($("formMsg"), "Processing error: " + err.message, "err");
     $("cropView").classList.remove("open");
