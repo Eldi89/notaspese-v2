@@ -202,6 +202,8 @@
 
     <div style="margin-top:16px">
       <button class="btn-primary" id="btnSave" type="button">Save expense</button>
+      <button class="btn-secondary" id="btnCancelEdit" type="button"
+        style="display:none; width:100%; margin-top:8px">Cancel edit</button>
     </div>
     <div class="msg" id="formMsg"></div>
   </section>
@@ -795,7 +797,7 @@ function orderCorners(pts){
 
 /* ── Crop UI: canvas + 4 handle trascinabili ── */
 const cropCanvas = $("cropCanvas");
-function drawCrop(){
+function drawCrop(activeIdx = -1){
   const wrap = $("cropCanvasWrap");
   const availW = wrap.clientWidth - 12, availH = wrap.clientHeight - 12;
   cropDisplayScale = Math.min(availW / workCanvas.width, availH / workCanvas.height, 1);
@@ -825,6 +827,40 @@ function drawCrop(){
     ctx.beginPath(); ctx.arc(q.x, q.y, 6, 0, Math.PI*2);
     ctx.fillStyle = "#2FBF9B"; ctx.fill();
   });
+  if(activeIdx >= 0) drawLoupe(ctx, activeIdx);
+}
+
+/* Lente d'ingrandimento sull'angolo trascinato: mostra cosa c'è sotto il dito */
+function drawLoupe(ctx, idx){
+  const zoom = 2.5;
+  const rL = Math.max(44, Math.min(64, cropCanvas.width * 0.17));
+  const c = corners[idx];
+  const dx = c.x * cropDisplayScale, dy = c.y * cropDisplayScale;
+  // posizione: sopra il dito; se non c'è spazio, sotto; sempre dentro il canvas
+  let cx = dx, cy = dy - rL - 52;
+  if(cy < rL + 4) cy = dy + rL + 52;
+  cx = Math.max(rL + 4, Math.min(cropCanvas.width  - rL - 4, cx));
+  cy = Math.max(rL + 4, Math.min(cropCanvas.height - rL - 4, cy));
+
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, rL, 0, Math.PI*2); ctx.clip();
+  ctx.fillStyle = "#10161A";
+  ctx.fillRect(cx - rL, cy - rL, rL*2, rL*2);
+  // ritaglio sorgente dal workCanvas a piena risoluzione, ingrandito
+  const srcR = rL / (cropDisplayScale * zoom);
+  ctx.drawImage(workCanvas,
+    c.x - srcR, c.y - srcR, srcR*2, srcR*2,
+    cx - rL, cy - rL, rL*2, rL*2);
+  // mirino
+  ctx.strokeStyle = "rgba(47,191,155,.9)"; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(cx - rL, cy); ctx.lineTo(cx + rL, cy);
+  ctx.moveTo(cx, cy - rL); ctx.lineTo(cx, cy + rL);
+  ctx.stroke();
+  ctx.restore();
+  // anello esterno
+  ctx.beginPath(); ctx.arc(cx, cy, rL, 0, Math.PI*2);
+  ctx.strokeStyle = "#FFFFFF"; ctx.lineWidth = 2.5; ctx.stroke();
 }
 let dragIdx = -1;
 function cropPos(ev){
@@ -840,7 +876,10 @@ cropCanvas.addEventListener("pointerdown", ev => {
     if(d < bestD){ bestD = d; best = i; }
   });
   dragIdx = best;
-  if(dragIdx >= 0) cropCanvas.setPointerCapture(ev.pointerId);
+  if(dragIdx >= 0){
+    cropCanvas.setPointerCapture(ev.pointerId);
+    drawCrop(dragIdx); // lente subito, prima ancora di muovere
+  }
 });
 cropCanvas.addEventListener("pointermove", ev => {
   if(dragIdx < 0) return;
@@ -849,9 +888,12 @@ cropCanvas.addEventListener("pointermove", ev => {
     x: Math.max(0, Math.min(workCanvas.width,  pos.x)),
     y: Math.max(0, Math.min(workCanvas.height, pos.y))
   };
-  drawCrop();
+  drawCrop(dragIdx);
 });
-cropCanvas.addEventListener("pointerup", () => { dragIdx = -1; });
+cropCanvas.addEventListener("pointerup", () => {
+  dragIdx = -1;
+  if(workCanvas) drawCrop(); // via la lente
+});
 window.addEventListener("resize", () => {
   if($("cropView").classList.contains("open")) drawCrop();
 });
@@ -969,10 +1011,43 @@ $("btnRicDelete").addEventListener("click", () => {
   updateReceiptChip();
 });
 
-/* ─────────── Salva spesa ─────────── */
+/* ─────────── Salva / Modifica spesa ─────────── */
+let editingId = null;
+
+function startEdit(exp){
+  editingId = exp.id;
+  $("fDate").value = exp.date;
+  $("fAmount").value = Number(exp.amount).toFixed(2);
+  $("fVendor").value = exp.vendor;
+  $("fCategory").value = document.querySelector(
+    `#fCategory option[value="${exp.category}"]`) ? exp.category : "TRAVEL MEALS";
+  $("fCurrency").value = exp.currency || "USD";
+  $("fPurpose").value = exp.purpose || "";
+  $("fAttendees").value = exp.attendees || "";
+  $("fClient").value = exp.client || "";
+  userTouchedDate = true; // la data scelta non va sovrascritta dall'OCR
+  if(pendingReceipt){ URL.revokeObjectURL(pendingReceipt.url); pendingReceipt = null; }
+  updateReceiptChip();
+  if(exp.hasReceipt) $("ricName").textContent =
+    "Receipt already attached — capture a new one only to replace it";
+  $("btnSave").textContent = "Update expense";
+  $("btnCancelEdit").style.display = "";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function exitEditMode(){
+  editingId = null;
+  $("btnSave").textContent = "Save expense";
+  $("btnCancelEdit").style.display = "none";
+  $("fAmount").value = ""; $("fVendor").value = ""; $("fPurpose").value = "";
+  userTouchedDate = false;
+  if(pendingReceipt){ URL.revokeObjectURL(pendingReceipt.url); pendingReceipt = null; }
+  updateReceiptChip();
+}
+$("btnCancelEdit").addEventListener("click", exitEditMode);
+
 $("btnSave").addEventListener("click", async () => {
-  const exp = {
-    id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()),
+  const fields = {
     date: $("fDate").value,
     amount: parseFloat($("fAmount").value),
     vendor: $("fVendor").value.trim(),
@@ -980,15 +1055,51 @@ $("btnSave").addEventListener("click", async () => {
     currency: $("fCurrency").value,
     purpose: $("fPurpose").value.trim(),
     attendees: $("fAttendees").value.trim(),
-    client: $("fClient").value.trim(),
-    createdAt: Date.now(),
-    hasReceipt: !!pendingReceipt
+    client: $("fClient").value.trim()
   };
-  if(!exp.date){ showMsg($("formMsg"), "Enter the date.", "err"); return; }
-  if(!exp.amount || exp.amount <= 0){ showMsg($("formMsg"), "Enter a valid amount.", "err"); return; }
-  if(!exp.vendor){ showMsg($("formMsg"), "Enter the vendor.", "err"); return; }
+  if(!fields.date){ showMsg($("formMsg"), "Enter the date.", "err"); return; }
+  if(!fields.amount || fields.amount <= 0){ showMsg($("formMsg"), "Enter a valid amount.", "err"); return; }
+  if(!fields.vendor){ showMsg($("formMsg"), "Enter the vendor.", "err"); return; }
 
   try{
+    if(editingId){
+      /* ── aggiornamento spesa esistente ── */
+      const exp = expenses.find(x => x.id === editingId);
+      if(!exp){ exitEditMode(); return; }
+      Object.assign(exp, fields);
+      if(pendingReceipt){
+        // nuova ricevuta catturata durante la modifica: sostituisce la vecchia
+        const names = new Set((await idbAll())
+          .filter(r => r.expenseId !== exp.id).map(r => r.filename));
+        await idbPut({ expenseId: exp.id, filename: receiptFilename(exp, names),
+                       blob: pendingReceipt.blob, createdAt: Date.now(), exportedAt: null });
+        exp.hasReceipt = true;
+      } else if(exp.hasReceipt){
+        // rinomina il PDF esistente se data/importo/fornitore sono cambiati
+        const rec = await idbGet(exp.id);
+        if(rec){
+          const names = new Set((await idbAll())
+            .filter(r => r.expenseId !== exp.id).map(r => r.filename));
+          const newName = receiptFilename(exp, names);
+          if(newName !== rec.filename){
+            rec.filename = newName;
+            await idbPut(rec);
+          }
+        }
+      }
+      saveExpenses(expenses);
+      exitEditMode();
+      showMsg($("formMsg"), "Expense updated ✓", "ok");
+      renderList(); updateBanner();
+      return;
+    }
+
+    /* ── nuova spesa ── */
+    const exp = Object.assign({
+      id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()),
+      createdAt: Date.now(),
+      hasReceipt: !!pendingReceipt
+    }, fields);
     if(pendingReceipt){
       const names = new Set((await idbAll()).map(r => r.filename));
       await idbPut({ expenseId: exp.id, filename: receiptFilename(exp, names),
@@ -1071,6 +1182,7 @@ async function renderList(){
 
 async function expenseActions(exp, rec){
   const btns = [];
+  btns.push({ label:"✏️ Edit expense", value:"edit", cls:"btn-secondary" });
   if(rec){
     btns.push({ label:"View receipt", value:"view", cls:"btn-secondary" });
     btns.push({ label:"Replace receipt", value:"replace", cls:"btn-secondary" });
@@ -1085,6 +1197,9 @@ async function expenseActions(exp, rec){
     (rec ? `\n${rec.filename}${rec.exportedAt ? " · exported ✓" : " · NOT exported yet"}` : "");
   const act = await modal(exp.vendor, info, btns);
 
+  if(act === "edit"){
+    startEdit(exp);
+  }
   if(act === "view"){
     await deliverFile(rec.blob, rec.filename, "application/pdf");
   }
