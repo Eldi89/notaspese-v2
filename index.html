@@ -237,7 +237,7 @@
   </section>
 </main>
 
-<footer>Data stays on this device until you export it. Export at the end of each month.<br>v2.8 — Sep 1, 2026</footer>
+<footer>Data stays on this device until you export it. Export at the end of each month.<br>v2.9 — Sep 1, 2026</footer>
 
 <!-- ══════════ CROP VIEW ══════════ -->
 <div id="cropView">
@@ -1310,8 +1310,13 @@ async function buildFilledTemplate(list){
   rows.forEach((e, i) => {
     const r = TPL_FIRST + i;
     if(e === null){
-      ws.getCell("Q"+r).value = ""; // riga vuota: via il prefill cliente del template
-      ws.getCell("P"+r).value = ""; // e via la formula SUM che mostrerebbe 0
+      // riga separatrice tra clienti: nessun bordo, nessun riempimento,
+      // nessuna formula — uno stacco visivo pulito nella griglia
+      for(let cc = 1; cc <= 18; cc++){
+        const cell = ws.getRow(r).getCell(cc);
+        cell.value = null;
+        cell.style = {};
+      }
       return;
     }
     const [y,m,d] = e.date.split("-").map(Number);
