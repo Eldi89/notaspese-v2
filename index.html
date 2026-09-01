@@ -1280,13 +1280,38 @@ async function buildFilledTemplate(list){
   ws.getCell("D7").value = new Date(Date.UTC(
     today.getFullYear(), today.getMonth(), today.getDate()));
 
-  const sorted = [...list].sort((a,b) => a.date.localeCompare(b.date));
-  const cap = TPL_LAST - TPL_FIRST + 1;
-  if(sorted.length > cap)
-    throw new Error(`The form holds ${cap} rows; you have ${sorted.length} expenses. Export in two batches.`);
+  /* Ordine: LTA per primo, poi gli altri clienti in ordine alfabetico,
+     spese senza cliente per ultime; dentro ogni gruppo per data.
+     Se c'è più di un cliente, una riga vuota separa i gruppi. */
+  const keyOf = e => (e.client || "").trim().toUpperCase();
+  const groups = new Map();
+  list.forEach(e => {
+    const k = keyOf(e);
+    if(!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(e);
+  });
+  const order = [...groups.keys()].sort((a,b) => {
+    if(a === "LTA") return -1; if(b === "LTA") return 1;
+    if(a === "") return 1;     if(b === "") return -1;
+    return a.localeCompare(b);
+  });
+  const rows = []; // expense | null (riga separatrice)
+  order.forEach((k, gi) => {
+    if(gi > 0) rows.push(null);
+    groups.get(k).sort((a,b) => a.date.localeCompare(b.date)).forEach(e => rows.push(e));
+  });
 
-  sorted.forEach((e, i) => {
+  const cap = TPL_LAST - TPL_FIRST + 1;
+  if(rows.length > cap)
+    throw new Error(`The form holds ${cap} rows (incl. ${order.length - 1} divider rows); you need ${rows.length}. Export in two batches.`);
+
+  rows.forEach((e, i) => {
     const r = TPL_FIRST + i;
+    if(e === null){
+      ws.getCell("Q"+r).value = ""; // riga vuota: via il prefill cliente del template
+      ws.getCell("P"+r).value = ""; // e via la formula SUM che mostrerebbe 0
+      return;
+    }
     const [y,m,d] = e.date.split("-").map(Number);
     const dCell = ws.getCell("B"+r);
     dCell.value = new Date(Date.UTC(y, m-1, d));
@@ -1296,8 +1321,20 @@ async function buildFilledTemplate(list){
     ws.getCell("E"+r).value = e.attendees || "";
     const col = CATEGORY_COL[(e.category||"").toUpperCase()] || "G";
     ws.getCell(col+r).value = Number(e.amount);
-    if(e.client) ws.getCell("Q"+r).value = e.client;
+    ws.getCell("Q"+r).value = e.client ? e.client : ""; // senza cliente: niente prefill del template
   });
+
+  /* Rimuove le righe vuote inutilizzate del modulo: i totali e le firme
+     salgono subito sotto l'ultima spesa. Le formule dei totali vanno
+     riscritte sull'intervallo reale (spliceRows non le aggiorna). */
+  const lastData = TPL_FIRST + rows.length - 1;
+  const unused = TPL_LAST - lastData;
+  if(unused > 0){
+    ws.spliceRows(lastData + 1, unused);
+    const totalsRow = lastData + 1;
+    for(const c of "FGHIJKLMNOP")
+      ws.getCell(`${c}${totalsRow}`).value = { formula: `SUM(${c}${TPL_FIRST}:${c}${lastData})` };
+  }
   return await wb.xlsx.writeBuffer();
 }
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
