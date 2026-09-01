@@ -237,7 +237,7 @@
   </section>
 </main>
 
-<footer>Data stays on this device until you export it. Export at the end of each month.</footer>
+<footer>Data stays on this device until you export it. Export at the end of each month.<br>v2.7 — Sep 1, 2026</footer>
 
 <!-- ══════════ CROP VIEW ══════════ -->
 <div id="cropView">
@@ -1275,6 +1275,8 @@ async function buildFilledTemplate(list){
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(await resp.arrayBuffer());
   const ws = wb.getWorksheet("Sheet1") || wb.worksheets[0];
+  // il file esportato contiene solo il modulo: via ogni altro foglio
+  wb.worksheets.filter(s => s.id !== ws.id).forEach(s => wb.removeWorksheet(s.id));
 
   const today = new Date();
   ws.getCell("D7").value = new Date(Date.UTC(
@@ -1330,6 +1332,12 @@ async function buildFilledTemplate(list){
   const lastData = TPL_FIRST + rows.length - 1;
   const unused = TPL_LAST - lastData;
   if(unused > 0){
+    // prima svuota formule e prefill delle righe in eccesso, poi eliminale:
+    // così anche se l'eliminazione fallisse, niente $0.00 / Serioplast residui
+    for(let rr = lastData + 1; rr <= TPL_LAST; rr++){
+      ws.getCell("P"+rr).value = "";
+      ws.getCell("Q"+rr).value = "";
+    }
     ws.spliceRows(lastData + 1, unused);
     const totalsRow = lastData + 1;
     for(const c of "FGHIJKLMNOP")
