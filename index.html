@@ -214,6 +214,9 @@
     <button class="btn-primary" id="btnExportZip" type="button">Download Excel + Receipts (ZIP)</button>
     <div class="btn-row">
       <button class="btn-secondary" id="btnExportXlsx" type="button">Excel only</button>
+      <button class="btn-secondary" id="btnExportReceipts" type="button">Receipts only (ZIP)</button>
+    </div>
+    <div class="btn-row">
       <button class="btn-danger" id="btnDeleteAll" type="button">Delete all</button>
     </div>
     <div class="btn-row">
@@ -1316,6 +1319,33 @@ $("btnExportXlsx").addEventListener("click", async () => {
   } catch(err){ showMsg($("exportMsg"), "Export error: " + err.message, "err"); }
 });
 
+/* Nome cartella per cliente (sanitizzato); vuoto → No_client */
+function clientFolderName(client){
+  return (client && client.trim()) ? sanitizeName(client) : "No_client";
+}
+/* Aggiunge i PDF allo zip sotto root/<Client>/; se singleClient, senza sottocartelle.
+   Ritorna { added, records } (records = ricevute incluse, per marcarle esportate). */
+function addReceiptsToZip(root, receipts, list, singleClient){
+  const byId = new Map(list.map(e => [e.id, e]));
+  const included = [];
+  for(const r of receipts){
+    const exp = byId.get(r.expenseId);
+    if(!exp) continue;
+    const target = singleClient ? root : root.folder(clientFolderName(exp.client));
+    target.file(r.filename, r.blob);
+    included.push(r);
+  }
+  return included;
+}
+async function markExported(records){
+  const now = Date.now();
+  for(const r of records){ r.exportedAt = now; await idbPut(r); }
+}
+function zipBlob(zip){
+  return zip.generateAsync({ type:"blob", compression:"DEFLATE", compressionOptions:{ level:6 } });
+}
+
+/* ── Excel + ricevute per cliente ── */
 $("btnExportZip").addEventListener("click", async () => {
   if(expenses.length === 0){ showMsg($("exportMsg"), "No expenses to export.", "err"); return; }
   const btn = $("btnExportZip");
@@ -1323,33 +1353,61 @@ $("btnExportZip").addEventListener("click", async () => {
   try{
     const label = exportLabel();
     const zip = new JSZip();
-    const buf = await buildFilledTemplate(expenses);
-    zip.file(`Expense_Note_${label}.xlsx`, buf);
+    zip.file(`Expense_Note_${label}.xlsx`, await buildFilledTemplate(expenses));
     const receipts = await idbAll();
-    const validIds = new Set(expenses.map(e => e.id));
-    const folder = zip.folder("Receipts");
-    let n = 0;
-    for(const r of receipts){
-      if(!validIds.has(r.expenseId)) continue;
-      folder.file(r.filename, r.blob);
-      n++;
-    }
-    const blob = await zip.generateAsync({ type:"blob",
-      compression:"DEFLATE", compressionOptions:{ level:6 } });
+    const included = addReceiptsToZip(zip.folder("Receipts"), receipts, expenses, false);
+    const blob = await zipBlob(zip);
     const delivered = await deliverFile(blob, `Expense_Note_${label}.zip`, "application/zip");
     if(delivered){
-      // mark receipts as exported ONLY after successful delivery
-      const now = Date.now();
-      for(const r of receipts){
-        if(validIds.has(r.expenseId)){ r.exportedAt = now; await idbPut(r); }
-      }
-      showMsg($("exportMsg"), `Archive ready: Excel + ${n} receipts.`, "ok");
+      await markExported(included); // solo dopo consegna riuscita
+      const clients = new Set(expenses.map(e => clientFolderName(e.client)));
+      showMsg($("exportMsg"),
+        `Archive ready: Excel + ${included.length} receipts in ${clients.size} client folder${clients.size===1?"":"s"}.`, "ok");
       renderList(); updateBanner();
     }
   } catch(err){
     showMsg($("exportMsg"), "Export error: " + err.message, "err");
   } finally {
     btn.disabled = false; btn.textContent = "Download Excel + Receipts (ZIP)";
+  }
+});
+
+/* ── Solo ricevute: tutti i clienti (una cartella ciascuno) o un cliente singolo ── */
+$("btnExportReceipts").addEventListener("click", async () => {
+  const withReceipt = expenses.filter(e => e.hasReceipt);
+  if(withReceipt.length === 0){ showMsg($("exportMsg"), "No receipts to export.", "err"); return; }
+  const clients = [...new Set(withReceipt.map(e => (e.client || "").trim()))];
+  const btns = [{ label:"All clients", value:"__all__", cls:"btn-primary" }];
+  clients.sort((a,b) => a.localeCompare(b)).forEach(c => {
+    const n = withReceipt.filter(e => (e.client||"").trim() === c).length;
+    btns.push({ label:`${c || "No client"} (${n})`, value:c, cls:"btn-secondary" });
+  });
+  btns.push({ label:"Cancel", value:null, cls:"btn-secondary" });
+  const choice = await modal("Receipts only", "Which receipts do you want to download?", btns);
+  if(choice === null) return;
+
+  const btn = $("btnExportReceipts");
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Building…';
+  try{
+    const single = choice !== "__all__";
+    const list = single ? expenses.filter(e => (e.client||"").trim() === choice) : expenses;
+    const zip = new JSZip();
+    const receipts = await idbAll();
+    const included = addReceiptsToZip(zip, receipts, list, single);
+    if(included.length === 0) throw new Error("no receipts found for this selection");
+    const name = single
+      ? `Receipts_${clientFolderName(choice)}_${exportLabel()}.zip`
+      : `Receipts_${exportLabel()}.zip`;
+    const delivered = await deliverFile(await zipBlob(zip), name, "application/zip");
+    if(delivered){
+      await markExported(included);
+      showMsg($("exportMsg"), `Receipts archive ready: ${included.length} PDF${included.length===1?"":"s"}.`, "ok");
+      renderList(); updateBanner();
+    }
+  } catch(err){
+    showMsg($("exportMsg"), "Export error: " + err.message, "err");
+  } finally {
+    btn.disabled = false; btn.textContent = "Receipts only (ZIP)";
   }
 });
 
