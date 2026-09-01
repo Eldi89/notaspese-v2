@@ -237,7 +237,7 @@
   </section>
 </main>
 
-<footer>Data stays on this device until you export it. Export at the end of each month.<br>v2.7 — Sep 1, 2026</footer>
+<footer>Data stays on this device until you export it. Export at the end of each month.<br>v2.8 — Sep 1, 2026</footer>
 
 <!-- ══════════ CROP VIEW ══════════ -->
 <div id="cropView">
@@ -1342,7 +1342,20 @@ async function buildFilledTemplate(list){
     const totalsRow = lastData + 1;
     for(const c of "FGHIJKLMNOP")
       ws.getCell(`${c}${totalsRow}`).value = { formula: `SUM(${c}${TPL_FIRST}:${c}${lastData})` };
+    /* spliceRows lascia "righe fantasma" con bordi e riempimenti in fondo
+       al foglio: azzera valori e stili di tutto ciò che sta sotto il blocco
+       firme (che finisce entro ~9 righe dai totali). */
+    for(let rr = totalsRow + 10; rr <= TPL_LAST + 20; rr++){
+      for(let cc = 1; cc <= 30; cc++){
+        const cell = ws.getRow(rr).getCell(cc);
+        cell.value = null;
+        cell.style = {};
+      }
+    }
   }
+  // colonna Total abbastanza larga da non mostrare #### con i totali grandi
+  const colP = ws.getColumn("P");
+  colP.width = Math.max(colP.width || 10, 13);
   return await wb.xlsx.writeBuffer();
 }
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
