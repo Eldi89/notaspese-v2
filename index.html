@@ -213,6 +213,9 @@
     <h2>Export</h2>
     <button class="btn-primary" id="btnExportZip" type="button">Download Excel + Receipts (ZIP)</button>
     <div class="btn-row">
+      <button class="btn-secondary" id="btnEmail" type="button">✉️ Send by email (Excel + ZIP per client)</button>
+    </div>
+    <div class="btn-row">
       <button class="btn-secondary" id="btnExportXlsx" type="button">Excel only</button>
       <button class="btn-secondary" id="btnExportReceipts" type="button">Receipts only (ZIP)</button>
     </div>
@@ -237,7 +240,7 @@
   </section>
 </main>
 
-<footer>Data stays on this device until you export it. Export at the end of each month.<br>v2.9 — Sep 1, 2026</footer>
+<footer>Data stays on this device until you export it. Export at the end of each month.<br>v2.10 — Sep 1, 2026</footer>
 
 <!-- ══════════ CROP VIEW ══════════ -->
 <div id="cropView">
@@ -1471,6 +1474,56 @@ $("btnExportReceipts").addEventListener("click", async () => {
     showMsg($("exportMsg"), "Export error: " + err.message, "err");
   } finally {
     btn.disabled = false; btn.textContent = "Receipts only (ZIP)";
+  }
+});
+
+/* ── Invia per email: share sheet con Excel separato + uno ZIP per cliente ── */
+$("btnEmail").addEventListener("click", async () => {
+  if(expenses.length === 0){ showMsg($("exportMsg"), "No expenses to export.", "err"); return; }
+  const btn = $("btnEmail");
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Preparing attachments…';
+  try{
+    const label = exportLabel();
+    const files = [];
+    // 1. Excel da solo
+    const xbuf = await buildFilledTemplate(expenses);
+    files.push(new File([xbuf], `Expense_Note_${label}.xlsx`, { type: XLSX_MIME }));
+    // 2. Uno ZIP per ogni cliente con le sue ricevute
+    const receipts = await idbAll();
+    const byId = new Map(expenses.map(e => [e.id, e]));
+    const groups = new Map(); // clientFolderName -> [receipt]
+    const included = [];
+    for(const r of receipts){
+      const exp = byId.get(r.expenseId);
+      if(!exp) continue;
+      const k = clientFolderName(exp.client);
+      if(!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(r);
+      included.push(r);
+    }
+    const names = [...groups.keys()].sort((a,b) =>
+      a === "LTA" ? -1 : b === "LTA" ? 1 : a.localeCompare(b));
+    for(const k of names){
+      const zip = new JSZip();
+      groups.get(k).forEach(r => zip.file(r.filename, r.blob));
+      const blob = await zipBlob(zip);
+      files.push(new File([blob], `Receipts_${k}_${label}.zip`, { type: "application/zip" }));
+    }
+    if(!navigator.share) throw new Error("sharing not available in this browser — use the download buttons instead");
+    try{
+      await navigator.share({ files, title: `Expense Note ${label}` });
+    } catch(e){
+      if(e && e.name === "AbortError"){ return; } // annullato dall'utente: nessun errore
+      throw new Error("could not open the share sheet: " + e.message);
+    }
+    await markExported(included);
+    showMsg($("exportMsg"),
+      `Shared: Excel + ${names.length} client ZIP${names.length===1?"":"s"} (${included.length} receipts).`, "ok");
+    renderList(); updateBanner();
+  } catch(err){
+    showMsg($("exportMsg"), "Email export error: " + err.message, "err");
+  } finally {
+    btn.disabled = false; btn.textContent = "✉️ Send by email (Excel + ZIP per client)";
   }
 });
 
